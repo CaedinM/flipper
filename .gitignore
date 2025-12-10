@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.DS_Store
+.env
+.venv/
+venv/
+*.sqlite3
+*.log
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MacOS
+.DS_Store
+
+# Node (if you add frontend)
+node_modules/
+
+# VS Code
+.vscode/
+
+# Environment
+.env*
+*.env.local
+
+# Cache
+*.swp
