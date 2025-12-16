@@ -1,6 +1,6 @@
 from db import run_query
-from db import orders_df, order_items_df, inventory_df, sales_df, monthly_revenue_df, total_revenue_df, current_month_kpi_df
-from charts import monthly_revenue_chart
+from db import orders_df, order_items_df, inventory_df, sales_df, monthly_profit_df, total_profit_df, current_month_kpi_df
+from charts import monthly_profit_chart
 
 import streamlit as st
 import pandas as pd
@@ -59,29 +59,29 @@ if page == "Overview":
 
     if current_month_kpi_df.empty:
         current_month_kpi_df = pd.DataFrame([{
-            "number_of_sales": 0,
-            "profit": 0
+            "items_sold": 0,
+            "item_profit": 0
         }])
     
     row = current_month_kpi_df.iloc[0]
-    number_of_sales = int(row.get("number_of_sales", 0) or 0)
-    profit = float(row.get("item_profit", 0) or 0)
+    items_sold = int(row.get("items_sold", 0) or 0)
+    item_profit = float(row.get("item_profit", 0) or 0)
 
     col_left, col_empty = st.columns(2)
     
     with col_left:
         col_a, col_b = st.columns(2)
         with col_a:
-            st.metric("Items Sold", f"{number_of_sales}")
+            st.metric("Items Sold", f"{items_sold}")
         with col_b:
-            st.metric("Profit", f"${profit:,.2f}")
+            st.metric("Item Profit", f"${item_profit:,.2f}")
 
     with col_empty:
         pass
 
 
     # Monthly Revenue Chart
-    st.altair_chart(monthly_revenue_chart, use_container_width=True)
+    st.altair_chart(monthly_profit_chart, use_container_width=True)
 
     st.markdown("---")
 
@@ -91,12 +91,12 @@ if page == "Overview":
     with col_01:
         col_uno, col_dos = st.columns(2)
         with col_uno:
-            items_sold_df = run_query("SELECT SUM(quantity) AS items_sold FROM sales")
+            items_sold_df = run_query("SELECT SUM(quantity) AS items_sold FROM sale_items")
             items_sold = int(items_sold_df["items_sold"].iloc[0] or 0)
             st.metric("Items Sold", f"{items_sold}")
         with col_dos:
-            total_revenue = float(total_revenue_df["total_revenue"].iloc[0] or 0)
-            st.metric("Profit", f"${total_revenue:,.2f}")
+            total_profit = float(total_profit_df["total_profit"].iloc[0] or 0)
+            st.metric("Item Profit", f"${total_profit:,.2f}")
 
     with col_02:
         pass
@@ -110,7 +110,7 @@ if page == "Overview":
         st.subheader("Recent Purchases")
         st.dataframe(order_items_df, use_container_width=True, hide_index=True,
         column_config={
-            "Price": st.column_config.NumberColumn("Price", format="$%.2f"),
+            "Cost (Per Unit)": st.column_config.NumberColumn("Cost (Per Unit)", format="$%.2f"),
             "Retail Value": st.column_config.NumberColumn("Retail Value", format="$%.2f"),
             "Date": st.column_config.DateColumn("Date",format="MM/DD/YY")
         })
@@ -119,7 +119,7 @@ if page == "Overview":
         st.subheader("Recent Sales")
         st.dataframe(sales_df, use_container_width=True, hide_index=True,
         column_config={
-            "Value": st.column_config.NumberColumn("Value", format="$%.2f"),
+            "Revenue": st.column_config.NumberColumn("Revenue", format="$%.2f"),
             "Date": st.column_config.DateColumn("Date",format="MM/DD/YY")
         })
 
@@ -136,7 +136,7 @@ elif page == "Items":
 # Orders and Expenses page
 elif page == "Orders & Expenses":
     items_purchased = order_items_df["Quantity"].sum()
-    total_spent = (order_items_df["Quantity"] * order_items_df["Price"]).sum()
+    total_spent = (order_items_df["Quantity"] * order_items_df["Cost (Per Unit)"]).sum()
     
     col_a, col_b = st.columns(2)
     with col_a:
@@ -146,10 +146,19 @@ elif page == "Orders & Expenses":
 
     st.subheader("Order History")
     orders_df = run_query("SELECT * FROM orders ORDER BY order_date DESC LIMIT 500;")
+    orders_df = orders_df.rename(columns={
+        "order_num": "Order Number",
+        "order_date": "Order Date",
+        "seller": "Seller",
+        "total_cost": "Total Cost",
+        "shipping_cost": "Shipping Cost",
+        "tax_rate": "Tax Rate"
+        })
+    orders_df["Tax Rate"] = orders_df["Tax Rate"] * 100
     st.dataframe(orders_df, use_container_width=True)
 
     expenses_df = run_query("SELECT * FROM other_expenses ORDER BY expense_date DESC;")
-    total_expenses = expenses_df['cost'].sum()
+    total_expenses = expenses_df['expense_cost'].sum()
     st.metric("Other Expenses", f"${total_expenses:,.2f}")
     st.dataframe(expenses_df, use_container_width=True)
 
@@ -167,12 +176,12 @@ elif page == "Sales":
     with left_col:
         col_1, col_2, col_3 = st.columns(3)
         with col_1:
-            st.metric("Items Sold", sales_df["Quantity"].sum())
+            st.metric("Items Sold", sales_df["Number of Items"].sum())
         with col_2:
-            total_recieved = sales_df["Value"].sum()
-            st.metric("Total Recieved", f"${total_recieved:,.2f}")
+            total_revenue = sales_df["Revenue"].sum()
+            st.metric("Total Revenue", f"${total_revenue:,.2f}")
         with col_3:
-            avg_sale_price = sales_df["Value"].mean()
+            avg_sale_price = sales_df["Revenue"].mean()
             st.metric("Average Sale Price", f"${avg_sale_price:,.2f}")
     with right_col:
         pass
