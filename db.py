@@ -56,7 +56,6 @@ def get_orders_df(refresh_token: int):
         ORDER BY order_date DESC;
         """, refresh_token)
 
-
 def get_sales_df(refresh_token: int):
     return run_query_df("""
         WITH item_totals AS (
@@ -164,7 +163,7 @@ def get_total_profit_df(refresh_token: int):
             GROUP BY s.sale_id, s.sale_revenue
         )
         SELECT SUM(profit) AS total_profit FROM sale_profit;
-        """, st.session_state.refresh_token)
+        """, refresh_token)
 
 def get_current_month_kpi_df(refresh_token: int):
     return run_query_df("""
@@ -189,7 +188,7 @@ def get_current_month_kpi_df(refresh_token: int):
             COALESCE(SUM(sale_revenue), 0) AS gross_revenue,
             COALESCE(SUM(item_profit), 0) AS item_profit
         FROM this_month;
-        """, st.session_state.refresh_token)
+        """, refresh_token)
 
 def insert_order_with_items(order_data: dict, items_rows: list[dict]):
     """
@@ -235,3 +234,25 @@ def insert_order_with_items(order_data: dict, items_rows: list[dict]):
                 )
 
                 # commits automatically when exiting "with get_conn() as conn:" if no exception
+
+# def upsert_item(description: str, category: str | None, retail_value: float | None, refresh_token: int) -> int:
+#     description = (description or "").strip()
+#     if not description:
+#         raise ValueError("Item description cannot be empty.")
+    
+#     row = run_query_df("""
+#         INSERT INTO items (description, category, retail_value)
+#         VALUES (%s, COALESCE(%s, ''), COALESCE(%s, 0.00)
+#         ON CONFLICT (description)
+#         DO UPDATE SET
+#             category = CASE
+#                 WHEN items.category = '' AND EXCLUDED.category <> '' THEN EXCLUDED.category
+#                 ELSE items.category
+#             END,
+#             retail_value = COALESCE(items.retail_value, EXCLUDED.retail_value)
+#         RETURNING item_id;
+#     """, refresh_token, (description, category, retail_value))
+    
+#     return row["item_id"]
+
+

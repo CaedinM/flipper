@@ -9,9 +9,10 @@ from pathlib import Path
 from db import *
 from charts import *
 from components.new_order_form import render_new_order_form
+from state import init_state
 
 if "refresh_token" not in st.session_state:
-    st.session_state["refresh_token"] = 0
+    init_state()
 
 # Page config
 st.set_page_config(
@@ -20,65 +21,45 @@ st.set_page_config(
     layout="wide"
 )
 
+def render_overview():
+    refresh_token = st.session_state["refresh_token"]
+    logo_path = Path("assets/flipper_logo.png")
+    top_left, top_mid, top_right = st.columns([1.2, 3, 2])
 
-# ################################################################################
-# HEADER FORMATING
-# ################################################################################
-logo_path = Path("assets/flipper_logo.png")
-top_left, top_mid, top_right = st.columns([1.2, 3, 2])
+    if "show_new_order" not in st.session_state:
+        st.session_state.show_new_order = False
 
-if "show_new_order" not in st.session_state:
-    st.session_state.show_new_order = False
+    with top_left:
+        st.image(str(logo_path), use_column_width=True)
+    with top_mid:
+        st.markdown(
+            """
+            <div style="padding-top:0.3rem;">
+                <h1 style="margin-bottom:0;">Advanced Resell Analytics</h1>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with top_right:
+        if st.button("➕ Log New Order", use_container_width=True):
+            st.session_state.show_new_order = not st.session_state.get("show_new_order", False)
+        
+        if st.session_state.get("order_saved_success"):
+            st.success("✅ Order saved successfully!")
+            st.session_state.order_saved_success = False
 
-with top_left:
-    st.image(str(logo_path), use_column_width=True)
-with top_mid:
-    st.markdown(
-        """
-        <div style="padding-top:0.3rem;">
-            <h1 style="margin-bottom:0;">Advanced Resell Analytics</h1>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with top_right:
-    if st.button("➕ Log New Order", use_container_width=True):
-        st.session_state.show_new_order = not st.session_state.get("show_new_order", False)
-    
-    if st.session_state.get("order_saved_success"):
-        st.success("✅ Order saved successfully!")
-        st.session_state.order_saved_success = False
+    if st.session_state.get("show_new_order", False):
+        with st.expander("New Order", expanded=True):
+            saved = render_new_order_form()
+            if saved:
+                st.session_state.show_new_order = False
+                st.session_state.order_saved_success = True
 
-if st.session_state.get("show_new_order", False):
-    with st.expander("New Order", expanded=True):
-        saved = render_new_order_form()
-        if saved:
-            st.session_state.show_new_order = False
-            st.session_state.order_saved_success = True
+                # force fresh data
+                st.session_state.refresh_token += 1
+                st.cache_data.clear()
 
-            # 👇 force fresh data next run
-            st.session_state.refresh_token += 1
-            st.cache_data.clear()   # only matters if you use @st.cache_data anywhere
-
-            st.rerun()
-
-
-# ################################################################################
-# SIDEBAR FORMATTING
-# ################################################################################
-st.sidebar.header("Navigation")
-page = st.sidebar.radio(
-    "Go to",
-    ["Overview", "Inventory", "Sales", "Orders & Expenses"],
-)
-
-
-# ################################################################################
-# PAGES
-# ################################################################################
-
-# Overview page
-if page == "Overview":
+                st.rerun()
 
     current_month_name = dt.date.today().strftime("%B %Y")
     st.header(f"Monthly Snapshot for {current_month_name}")
@@ -163,104 +144,4 @@ if page == "Overview":
     st.markdown("---")
     st.write("Use the sidebar to explore each table.")
 
-# Items page
-elif page == "Items":
-    st.subheader("Items")
-    df = run_query_df("SELECT * FROM items ORDER BY item_id LIMIT 500;", st.session_state["refresh_token"])
-    st.dataframe(df, use_container_width=True)
-
-# Orders and Expenses page
-elif page == "Orders & Expenses":
-    order_items_df = get_order_items_df(st.session_state["refresh_token"])
-    items_purchased = order_items_df["Quantity"].sum()
-    total_spent = (order_items_df["Quantity"] * order_items_df["Cost (Per Unit)"]).sum()
-    
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.metric("Items Purchased", f"{items_purchased}")
-    with col_b:
-        st.metric("Total Spent", f"${total_spent:,.2f}")
-
-    st.subheader("Order History")
-    st.caption(f"Updated at: {dt.datetime.now()}")
-    orders_df = run_query_df("SELECT * FROM orders ORDER BY order_date DESC LIMIT 500;", st.session_state["refresh_token"])
-    orders_df = orders_df.rename(columns={
-        "order_num": "Order Number",
-        "order_date": "Order Date",
-        "seller": "Seller",
-        "total_cost": "Total Cost",
-        "shipping_cost": "Shipping Cost",
-        "tax_rate": "Tax Rate"
-        })
-    orders_df["Tax Rate"] = orders_df["Tax Rate"] * 100
-    st.dataframe(orders_df, use_container_width=True)
-
-    expenses_df = run_query_df("SELECT * FROM other_expenses ORDER BY expense_date DESC;", st.session_state["refresh_token"])
-    total_expenses = expenses_df['expense_cost'].sum()
-    st.metric("Other Expenses", f"${total_expenses:,.2f}")
-    st.dataframe(expenses_df, use_container_width=True)
-
-# Order Items page
-elif page == "Order Items":
-    st.subheader("Order Items")
-    df = run_query_df("SELECT * FROM order_items ORDER BY order_item_id LIMIT 500;", st.session_state["refresh_token"])
-    st.dataframe(df, use_container_width=True)
-
-# Sales page
-elif page == "Sales":
-    st.header("Sales")
-
-    sales_df = get_sales_df(st.session_state["refresh_token"])
-    left_col, right_col = st.columns(2)
-    with left_col:
-        col_1, col_2, col_3 = st.columns(3)
-        with col_1:
-            st.metric("Items Sold", sales_df["Number of Items"].sum())
-        with col_2:
-            total_revenue = sales_df["Revenue"].sum()
-            st.metric("Total Revenue", f"${total_revenue:,.2f}")
-        with col_3:
-            avg_sale_price = sales_df["Revenue"].mean()
-            st.metric("Average Sale Price", f"${avg_sale_price:,.2f}")
-    with right_col:
-        pass
-        
-    # Adjust column / primary key names if your sales schema is different
-    df = run_query_df("SELECT * FROM sales ORDER BY sale_id LIMIT 500;", st.session_state["refresh_token"])
-    st.dataframe(df, use_container_width=True)
-    st.caption(f"Updated at: {dt.datetime.now()}")
-
-# Returns page
-elif page == "Returns":
-    st.subheader("Returns")
-    df = run_query_df("SELECT * FROM returns ORDER BY return_id LIMIT 500;", st.session_state["refresh_token"])
-    st.dataframe(df, use_container_width=True)
-
-# Inventory page
-elif page == "Inventory":
-    st.header("Inventory")
-
-    st.subheader("Overview:") # OVERVIEW
-    col1, col2, col3, col4 = st.columns(4)
-
-    st.subheader("Current Invetory") # INVENTORY TABLE
-    inventory_df = get_inventory_df(st.session_state["refresh_token"])
-    st.dataframe(inventory_df, use_container_width=True, hide_index=True,
-    column_config={
-        "Retail Value": st.column_config.NumberColumn(
-            "Retail Value",
-            format="%.2f"
-        )
-    })
-    st.caption(f"Updated at: {dt.datetime.now()}")
-
-    total_units = int(inventory_df["Stock"].sum())
-    total_retail_value = float((inventory_df["Retail Value"] * inventory_df["Stock"]).sum())
-    unique_items_in_stock = len(inventory_df[inventory_df["Stock"] > 0])
-    stock_by_category = inventory_df.groupby("Category")["Stock"].sum()
-    top_category = stock_by_category.idxmax()
-    
-    col1.metric("Total Units in Stock", total_units)
-    col2.metric("Total Retail Value", f"${total_retail_value:,.2f}")
-    col3.metric("Unique Items in Stock", unique_items_in_stock)
-    col4.metric("Top Category in Stock", top_category)
+render_overview()
