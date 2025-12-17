@@ -26,6 +26,7 @@ def get_connection():
         password=os.getenv("DB_PASSWORD"),
     )
 
+# query with caching
 def run_query(sql: str, params=None) -> pd.DataFrame:
     """Return query results as a pandas DataFrame."""
     if params is None:
@@ -36,148 +37,159 @@ def run_query(sql: str, params=None) -> pd.DataFrame:
             rows = cur.fetchall()
     return pd.DataFrame(rows)
 
-orders_df = run_query("""
-    SELECT 
-    order_date AS "Date",
-    order_num AS "Order Number",
-    seller AS "Retailer",
-    total_cost AS "Cost"
-    FROM orders
-    ORDER BY order_date DESC;
-""")
-
-
-sales_df = run_query("""
-WITH item_totals AS (
-    SELECT
-        sale_id,
-        SUM(quantity) AS num_items
-    FROM sale_items
-    GROUP BY sale_id
-    )
-    SELECT
-        sale_date AS "Date",
-        platform AS "Platform",
-        num_items AS "Number of Items",
-        sale_revenue AS "Revenue"
-    FROM sales s
-    LEFT JOIN item_totals it ON it.sale_id = s.sale_id;
-    """)
-
-order_items_df = run_query("""
-    SELECT 
-        o.order_date AS "Date",
-        i.category AS "Category", 
-        i.description AS "Item", 
-        oi.quantity AS "Quantity", 
-        cb.unit_cost_basis AS "Cost (Per Unit)"
-    FROM order_items oi
-    JOIN items i ON oi.item_id = i.item_id
-    INNER JOIN orders o ON o.order_num = oi.order_num
-    JOIN cost_basis cb ON cb.order_num = oi.order_num AND cb.item_id = oi.item_id
-    ORDER BY o.order_date DESC;
-""")
-
-inventory_df = run_query("""
-    WITH purchased AS (
-        SELECT item_id, SUM(quantity) AS total_purchased
-        FROM order_items
-        GROUP BY item_id
-        ),
-    sold AS (
-        SELECT item_id, SUM(quantity) AS total_sold
-        FROM sale_items
-        GROUP BY item_id
-        ),
-    returns AS (
-        SELECT item_id, SUM(quantity) AS total_returned
-        FROM return_items
-        GROUP BY item_id
-        )
-    SELECT
-        i.description AS "Item",
-        i.category AS "Category",
-        i.retail_value AS "Retail Value",
-        COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0) AS "Stock"
-    FROM items i
-    LEFT JOIN purchased p ON p.item_id = i.item_id
-    LEFT JOIN sold s ON s.item_id = i.item_id
-    LEFT JOIN returns r ON r.item_id = i.item_id
-    WHERE (COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0)) > 0;
-""")
-
-monthly_profit_df = run_query("""
-WITH month_series AS (
-    SELECT generate_series(
-        date_trunc('month', CURRENT_DATE) - interval '5 months',
-        date_trunc('month', CURRENT_DATE),
-        interval '1 month'
-    )::date AS month
-),
-sale_profit AS (
-    SELECT
-        date_trunc('month', s.sale_date)::date AS month,
-        s.sale_id,
-        s.sale_revenue
-          - COALESCE(SUM(si.quantity * si.unit_cost_basis_at_sale), 0) AS profit
-    FROM sales s
-    LEFT JOIN sale_items si ON si.sale_id = s.sale_id
-    GROUP BY date_trunc('month', s.sale_date)::date, s.sale_id, s.sale_revenue
-),
-monthly_profit AS (
-    SELECT
-        month,
-        SUM(profit) AS revenue
-    FROM sale_profit
-    GROUP BY month
-)
-SELECT
-    m.month,
-    COALESCE(mp.revenue, 0) AS profit
-FROM month_series m
-LEFT JOIN monthly_profit mp ON mp.month = m.month
-ORDER BY m.month;
-""")
-
-total_profit_df = run_query("""
-WITH sale_profit AS (
-    SELECT
-        s.sale_id,
-        s.sale_revenue - COALESCE(SUM(si.quantity * si.unit_cost_basis_at_sale), 0) AS profit
-    FROM sales s
-    LEFT JOIN sale_items si ON si.sale_id = s.sale_id
-    GROUP BY s.sale_id, s.sale_revenue
-)
-SELECT SUM(profit) AS total_profit FROM sale_profit;
-""")
-
-current_month_kpi_df = run_query("""
-WITH this_month AS (
-    SELECT
-        s.sale_id,
-        s.sale_date,
-        s.sale_revenue,
-        COALESCE(SUM(si.quantity), 0) AS quantity,
-        s.sale_revenue - COALESCE(SUM(si.quantity * si.unit_cost_basis_at_sale), 0) AS item_profit
-    FROM sales s
-    LEFT JOIN sale_items si ON si.sale_id = s.sale_id
-    WHERE s.sale_date >= date_trunc('month', CURRENT_DATE)
-      AND s.sale_date < date_trunc('month', CURRENT_DATE) + interval '1 month'
-    GROUP BY
-    s.sale_id,
-    s.sale_date,
-    s.sale_revenue
-)
-SELECT
-    COALESCE(SUM(quantity), 0) AS items_sold,
-    COALESCE(SUM(sale_revenue), 0) AS gross_revenue,
-    COALESCE(SUM(item_profit), 0) AS item_profit
-FROM this_month;
-""")
-
-def run_query_df(sql: str, params=None) -> pd.DataFrame:
+# query with no caching (Use for live updates)
+@st.cache_data(show_spinner=False)
+def run_query_df(sql: str, refresh_token: int=0, params=None) -> pd.DataFrame:
     with get_connection() as conn:
+        if params is None:
+            return pd.read_sql_query(sql, conn)
         return pd.read_sql_query(sql, conn, params=params)
+
+def get_orders_df(refresh_token: int):
+    return run_query_df("""
+        SELECT 
+        order_date AS "Date",
+        order_num AS "Order Number",
+        seller AS "Retailer",
+        total_cost AS "Cost"
+        FROM orders
+        ORDER BY order_date DESC;
+        """, refresh_token)
+
+
+def get_sales_df(refresh_token: int):
+    return run_query_df("""
+        WITH item_totals AS (
+            SELECT
+                sale_id,
+                SUM(quantity) AS num_items
+            FROM sale_items
+            GROUP BY sale_id
+            )
+            SELECT
+                sale_date AS "Date",
+                platform AS "Platform",
+                num_items AS "Number of Items",
+                sale_revenue AS "Revenue"
+            FROM sales s
+            LEFT JOIN item_totals it ON it.sale_id = s.sale_id;
+        """, refresh_token)
+
+def get_order_items_df(refresh_token: int):
+    return run_query_df("""
+        SELECT 
+            o.order_date AS "Date",
+            i.category AS "Category", 
+            i.description AS "Item", 
+            oi.quantity AS "Quantity", 
+            cb.unit_cost_basis AS "Cost (Per Unit)"
+        FROM order_items oi
+        JOIN items i ON oi.item_id = i.item_id
+        INNER JOIN orders o ON o.order_num = oi.order_num
+        JOIN cost_basis cb ON cb.order_num = oi.order_num AND cb.item_id = oi.item_id
+        ORDER BY o.order_date DESC;
+        """, refresh_token)
+
+def get_inventory_df(refresh_token: int):
+    return run_query_df("""
+        WITH purchased AS (
+            SELECT item_id, SUM(quantity) AS total_purchased
+            FROM order_items
+            GROUP BY item_id
+            ),
+        sold AS (
+            SELECT item_id, SUM(quantity) AS total_sold
+            FROM sale_items
+            GROUP BY item_id
+            ),
+        returns AS (
+            SELECT item_id, SUM(quantity) AS total_returned
+            FROM return_items
+            GROUP BY item_id
+            )
+        SELECT
+            i.description AS "Item",
+            i.category AS "Category",
+            i.retail_value AS "Retail Value",
+            COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0) AS "Stock"
+        FROM items i
+        LEFT JOIN purchased p ON p.item_id = i.item_id
+        LEFT JOIN sold s ON s.item_id = i.item_id
+        LEFT JOIN returns r ON r.item_id = i.item_id
+        WHERE (COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0)) > 0;
+        """, refresh_token)
+
+def get_monthly_profit_df(refresh_token: int):
+    return run_query_df("""
+        WITH month_series AS (
+            SELECT generate_series(
+                date_trunc('month', CURRENT_DATE) - interval '5 months',
+                date_trunc('month', CURRENT_DATE),
+                interval '1 month'
+            )::date AS month
+        ),
+        sale_profit AS (
+            SELECT
+                date_trunc('month', s.sale_date)::date AS month,
+                s.sale_id,
+                s.sale_revenue
+                - COALESCE(SUM(si.quantity * si.unit_cost_basis_at_sale), 0) AS profit
+            FROM sales s
+            LEFT JOIN sale_items si ON si.sale_id = s.sale_id
+            GROUP BY date_trunc('month', s.sale_date)::date, s.sale_id, s.sale_revenue
+        ),
+        monthly_profit AS (
+            SELECT
+                month,
+                SUM(profit) AS revenue
+            FROM sale_profit
+            GROUP BY month
+        )
+        SELECT
+            m.month,
+            COALESCE(mp.revenue, 0) AS profit
+        FROM month_series m
+        LEFT JOIN monthly_profit mp ON mp.month = m.month
+        ORDER BY m.month;
+        """, refresh_token)
+
+def get_total_profit_df(refresh_token: int):
+    return run_query_df("""
+        WITH sale_profit AS (
+            SELECT
+                s.sale_id,
+                s.sale_revenue - COALESCE(SUM(si.quantity * si.unit_cost_basis_at_sale), 0) AS profit
+            FROM sales s
+            LEFT JOIN sale_items si ON si.sale_id = s.sale_id
+            GROUP BY s.sale_id, s.sale_revenue
+        )
+        SELECT SUM(profit) AS total_profit FROM sale_profit;
+        """, st.session_state.refresh_token)
+
+def get_current_month_kpi_df(refresh_token: int):
+    return run_query_df("""
+        WITH this_month AS (
+            SELECT
+                s.sale_id,
+                s.sale_date,
+                s.sale_revenue,
+                COALESCE(SUM(si.quantity), 0) AS quantity,
+                s.sale_revenue - COALESCE(SUM(si.quantity * si.unit_cost_basis_at_sale), 0) AS item_profit
+            FROM sales s
+            LEFT JOIN sale_items si ON si.sale_id = s.sale_id
+            WHERE s.sale_date >= date_trunc('month', CURRENT_DATE)
+            AND s.sale_date < date_trunc('month', CURRENT_DATE) + interval '1 month'
+            GROUP BY
+            s.sale_id,
+            s.sale_date,
+            s.sale_revenue
+        )
+        SELECT
+            COALESCE(SUM(quantity), 0) AS items_sold,
+            COALESCE(SUM(sale_revenue), 0) AS gross_revenue,
+            COALESCE(SUM(item_profit), 0) AS item_profit
+        FROM this_month;
+        """, st.session_state.refresh_token)
 
 def insert_order_with_items(order_data: dict, items_rows: list[dict]):
     """

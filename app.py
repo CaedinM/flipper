@@ -7,9 +7,11 @@ from psycopg2.extras import execute_values
 from pathlib import Path
 
 from db import *
-from charts import monthly_profit_chart
+from charts import *
 from components.new_order_form import render_new_order_form
 
+if "refresh_token" not in st.session_state:
+    st.session_state["refresh_token"] = 0
 
 # Page config
 st.set_page_config(
@@ -17,6 +19,7 @@ st.set_page_config(
     page_icon="🦭",  # you can swap this for your logo favicon later
     layout="wide"
 )
+
 
 # ################################################################################
 # HEADER FORMATING
@@ -40,17 +43,23 @@ with top_mid:
     )
 with top_right:
     if st.button("➕ Log New Order", use_container_width=True):
-        st.session_state.show_new_order = not st.session_state.show_new_order
+        st.session_state.show_new_order = not st.session_state.get("show_new_order", False)
+    
     if st.session_state.get("order_saved_success"):
         st.success("✅ Order saved successfully!")
         st.session_state.order_saved_success = False
 
-if st.session_state.show_new_order:
+if st.session_state.get("show_new_order", False):
     with st.expander("New Order", expanded=True):
         saved = render_new_order_form()
         if saved:
             st.session_state.show_new_order = False
-            st.session_state.order_saved_success = True 
+            st.session_state.order_saved_success = True
+
+            # 👇 force fresh data next run
+            st.session_state.refresh_token += 1
+            st.cache_data.clear()   # only matters if you use @st.cache_data anywhere
+
             st.rerun()
 
 
@@ -74,6 +83,7 @@ if page == "Overview":
     current_month_name = dt.date.today().strftime("%B %Y")
     st.header(f"Monthly Snapshot for {current_month_name}")
 
+    current_month_kpi_df = get_current_month_kpi_df(st.session_state["refresh_token"])
     if current_month_kpi_df.empty:
         current_month_kpi_df = pd.DataFrame([{
             "items_sold": 0,
@@ -98,7 +108,7 @@ if page == "Overview":
 
 
     # Monthly Revenue Chart
-    st.altair_chart(monthly_profit_chart, use_container_width=True)
+    st.altair_chart(get_monthly_profit_chart(st.session_state["refresh_token"]), use_container_width=True)
 
     st.markdown("---")
 
@@ -108,10 +118,11 @@ if page == "Overview":
     with col_01:
         col_uno, col_dos = st.columns(2)
         with col_uno:
-            items_sold_df = run_query("SELECT SUM(quantity) AS items_sold FROM sale_items")
+            items_sold_df = run_query_df("SELECT SUM(quantity) AS items_sold FROM sale_items", st.session_state["refresh_token"])
             items_sold = int(items_sold_df["items_sold"].iloc[0] or 0)
             st.metric("Items Sold", f"{items_sold}")
         with col_dos:
+            total_profit_df = get_total_profit_df(st.session_state["refresh_token"])
             total_profit = float(total_profit_df["total_profit"].iloc[0] or 0)
             st.metric("Item Profit", f"${total_profit:,.2f}")
 
@@ -125,20 +136,28 @@ if page == "Overview":
 
     with col1:
         st.subheader("Recent Purchases")
-        st.dataframe(order_items_df, use_container_width=True, hide_index=True,
+        order_items_df = get_order_items_df(st.session_state["refresh_token"])
+        st.dataframe(order_items_df,
+        use_container_width=True,
+        hide_index=True,
         column_config={
             "Cost (Per Unit)": st.column_config.NumberColumn("Cost (Per Unit)", format="$%.2f"),
             "Retail Value": st.column_config.NumberColumn("Retail Value", format="$%.2f"),
             "Date": st.column_config.DateColumn("Date",format="MM/DD/YY")
         })
+        st.caption(f"Updated at: {dt.datetime.now()}")
     
     with col2:
         st.subheader("Recent Sales")
-        st.dataframe(sales_df, use_container_width=True, hide_index=True,
+        sales_df = get_sales_df(st.session_state["refresh_token"])
+        st.dataframe(sales_df,
+        use_container_width=True,
+        hide_index=True,
         column_config={
             "Revenue": st.column_config.NumberColumn("Revenue", format="$%.2f"),
             "Date": st.column_config.DateColumn("Date",format="MM/DD/YY")
         })
+        st.caption(f"Updated at: {dt.datetime.now()}")
 
 
     st.markdown("---")
@@ -147,11 +166,12 @@ if page == "Overview":
 # Items page
 elif page == "Items":
     st.subheader("Items")
-    df = run_query("SELECT * FROM items ORDER BY item_id LIMIT 500;")
+    df = run_query_df("SELECT * FROM items ORDER BY item_id LIMIT 500;", st.session_state["refresh_token"])
     st.dataframe(df, use_container_width=True)
 
 # Orders and Expenses page
 elif page == "Orders & Expenses":
+    order_items_df = get_order_items_df(st.session_state["refresh_token"])
     items_purchased = order_items_df["Quantity"].sum()
     total_spent = (order_items_df["Quantity"] * order_items_df["Cost (Per Unit)"]).sum()
     
@@ -162,7 +182,8 @@ elif page == "Orders & Expenses":
         st.metric("Total Spent", f"${total_spent:,.2f}")
 
     st.subheader("Order History")
-    orders_df = run_query("SELECT * FROM orders ORDER BY order_date DESC LIMIT 500;")
+    st.caption(f"Updated at: {dt.datetime.now()}")
+    orders_df = run_query_df("SELECT * FROM orders ORDER BY order_date DESC LIMIT 500;", st.session_state["refresh_token"])
     orders_df = orders_df.rename(columns={
         "order_num": "Order Number",
         "order_date": "Order Date",
@@ -174,7 +195,7 @@ elif page == "Orders & Expenses":
     orders_df["Tax Rate"] = orders_df["Tax Rate"] * 100
     st.dataframe(orders_df, use_container_width=True)
 
-    expenses_df = run_query("SELECT * FROM other_expenses ORDER BY expense_date DESC;")
+    expenses_df = run_query_df("SELECT * FROM other_expenses ORDER BY expense_date DESC;", st.session_state["refresh_token"])
     total_expenses = expenses_df['expense_cost'].sum()
     st.metric("Other Expenses", f"${total_expenses:,.2f}")
     st.dataframe(expenses_df, use_container_width=True)
@@ -182,13 +203,14 @@ elif page == "Orders & Expenses":
 # Order Items page
 elif page == "Order Items":
     st.subheader("Order Items")
-    df = run_query("SELECT * FROM order_items ORDER BY order_item_id LIMIT 500;")
+    df = run_query_df("SELECT * FROM order_items ORDER BY order_item_id LIMIT 500;", st.session_state["refresh_token"])
     st.dataframe(df, use_container_width=True)
 
 # Sales page
 elif page == "Sales":
     st.header("Sales")
 
+    sales_df = get_sales_df(st.session_state["refresh_token"])
     left_col, right_col = st.columns(2)
     with left_col:
         col_1, col_2, col_3 = st.columns(3)
@@ -204,13 +226,14 @@ elif page == "Sales":
         pass
         
     # Adjust column / primary key names if your sales schema is different
-    df = run_query("SELECT * FROM sales ORDER BY sale_id LIMIT 500;")
+    df = run_query_df("SELECT * FROM sales ORDER BY sale_id LIMIT 500;", st.session_state["refresh_token"])
     st.dataframe(df, use_container_width=True)
+    st.caption(f"Updated at: {dt.datetime.now()}")
 
 # Returns page
 elif page == "Returns":
     st.subheader("Returns")
-    df = run_query("SELECT * FROM returns ORDER BY return_id LIMIT 500;")
+    df = run_query_df("SELECT * FROM returns ORDER BY return_id LIMIT 500;", st.session_state["refresh_token"])
     st.dataframe(df, use_container_width=True)
 
 # Inventory page
@@ -221,7 +244,7 @@ elif page == "Inventory":
     col1, col2, col3, col4 = st.columns(4)
 
     st.subheader("Current Invetory") # INVENTORY TABLE
-
+    inventory_df = get_inventory_df(st.session_state["refresh_token"])
     st.dataframe(inventory_df, use_container_width=True, hide_index=True,
     column_config={
         "Retail Value": st.column_config.NumberColumn(
@@ -229,6 +252,7 @@ elif page == "Inventory":
             format="%.2f"
         )
     })
+    st.caption(f"Updated at: {dt.datetime.now()}")
 
     total_units = int(inventory_df["Stock"].sum())
     total_retail_value = float((inventory_df["Retail Value"] * inventory_df["Stock"]).sum())
