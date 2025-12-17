@@ -1,6 +1,6 @@
 CREATE TABLE items (
     item_id SERIAL PRIMARY KEY,
-    description TEXT NOT NULL,
+    description TEXT NOT NULL UNIQUE,
     category TEXT NOT NULL,
     retail_value NUMERIC(12,2),
     avg_unit_cost_basis NUMERIC(12,2)
