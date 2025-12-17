@@ -1,12 +1,13 @@
 import os
 import psycopg2
 import pandas as pd
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, execute_values
 from dotenv import load_dotenv
+import streamlit as st
 
 load_dotenv(".env.local")
 
-def get_connection():
+def get_dict_connection():
     return psycopg2.connect(
         host=os.getenv("DB_HOST"),
         port=os.getenv("DB_PORT"),
@@ -16,11 +17,20 @@ def get_connection():
         cursor_factory=RealDictCursor,
     )
 
+def get_connection():
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        port=os.getenv("DB_PORT"),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
+
 def run_query(sql: str, params=None) -> pd.DataFrame:
     """Return query results as a pandas DataFrame."""
     if params is None:
         params = ()
-    with get_connection() as conn:
+    with get_dict_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
             rows = cur.fetchall()
@@ -164,3 +174,52 @@ SELECT
     COALESCE(SUM(item_profit), 0) AS item_profit
 FROM this_month;
 """)
+
+def run_query_df(sql: str, params=None) -> pd.DataFrame:
+    with get_connection() as conn:
+        return pd.read_sql_query(sql, conn, params=params)
+
+def insert_order_with_items(order_data: dict, items_rows: list[dict]):
+    """
+    order_data: dict for orders table
+    items_rows: list of dicts for order_items table rows
+    """
+    with get_dict_connection() as conn:
+        with conn.cursor() as cur:
+                # insert into orders
+                cur.execute(
+                    """
+                    INSERT INTO orders (order_num, order_date, seller, total_cost, shipping_cost, tax_rate)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        order_data["order_num"],
+                        order_data["order_date"],
+                        order_data["seller"],
+                        order_data["total_cost"],
+                        order_data["shipping_cost"],
+                        order_data["tax_rate"]
+                    ),
+                )
+                # insert into order_items
+                values = [
+                    (
+                        order_data["order_num"],
+                        r["item_id"],
+                        r["quantity"],
+                        r["purchase_price_per_item"],
+                        r["pas_fee_per_item"]
+                    )
+                    for r in items_rows
+                ]
+
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO order_items (order_num, item_id, quantity, purchase_price_per_item, pas_fee_per_item)
+                    VALUES %s
+                    """,
+                    values,
+                )
+
+                # commits automatically when exiting "with get_conn() as conn:" if no exception

@@ -1,13 +1,14 @@
-from db import run_query
-from db import orders_df, order_items_df, inventory_df, sales_df, monthly_profit_df, total_profit_df, current_month_kpi_df
-from charts import monthly_profit_chart
-
 import streamlit as st
 import pandas as pd
 import altair as alt
 import datetime as dt
 
+from psycopg2.extras import execute_values
 from pathlib import Path
+
+from db import *
+from charts import monthly_profit_chart
+from components.new_order_form import render_new_order_form
 
 
 # Page config
@@ -22,19 +23,35 @@ st.set_page_config(
 # ################################################################################
 logo_path = Path("assets/flipper_logo.png")
 top_left, top_mid, top_right = st.columns([1.2, 3, 2])
+
+if "show_new_order" not in st.session_state:
+    st.session_state.show_new_order = False
+
 with top_left:
     st.image(str(logo_path), use_column_width=True)
 with top_mid:
     st.markdown(
         """
         <div style="padding-top:0.3rem;">
-            <h1 style="margin-bottom:0;">Advanced Analytics for Resellers</h1>
+            <h1 style="margin-bottom:0;">Advanced Resell Analytics</h1>
         </div>
         """,
         unsafe_allow_html=True,
     )
 with top_right:
-    pass
+    if st.button("➕ Log New Order", use_container_width=True):
+        st.session_state.show_new_order = not st.session_state.show_new_order
+    if st.session_state.get("order_saved_success"):
+        st.success("✅ Order saved successfully!")
+        st.session_state.order_saved_success = False
+
+if st.session_state.show_new_order:
+    with st.expander("New Order", expanded=True):
+        saved = render_new_order_form()
+        if saved:
+            st.session_state.show_new_order = False
+            st.session_state.order_saved_success = True 
+            st.rerun()
 
 
 # ################################################################################
