@@ -67,10 +67,17 @@ def render_new_order_form():
                 "pas_fee_per_item": st.column_config.NumberColumn("PAS Fee (Per Item)", min_value=0.00, step=0.01),
             }
         )
-
-        submitted = st.form_submit_button("Save Order", type="primary", use_container_width=True)
+        col_cancel, col_save = st.columns(2)
+        with col_cancel:
+            cancelled = st.form_submit_button("Cancel", type="primary", use_container_width=True)
+        with col_save:
+            submitted = st.form_submit_button("Save Order", type="primary", use_container_width=True)
 
     st.session_state.line_items_df = edited_df
+
+    if cancelled:
+        st.session_state.show_new_order = False
+        st.rerun()
 
     if submitted:
         errors = []
