@@ -1,6 +1,11 @@
 from __future__ import annotations
 from crewai import Agent
 
+
+search_tool = TavilySearchTool(api_key=TAVILY_API_KEY)
+scrape_tool = ScrapeWebsiteTool()  
+llm = LLM(model="gpt-4o", api_key=OPENAI_API_KEY)
+
 def build_sneaker_scout() -> Agent:
     return Agent(
     role="Upcoming Sneaker Release Scout",
