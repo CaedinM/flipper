@@ -6,8 +6,13 @@ import datetime as dt
 from psycopg2.extras import execute_values
 from pathlib import Path
 
-from db import *
-from charts import *
+import sys
+from pathlib import Path
+# Add project root to path for backend imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from backend.db import *
+from components.charts import *
 from components.new_order_form import render_new_order_form
 from state import init_state
 

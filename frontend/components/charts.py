@@ -1,7 +1,13 @@
 import altair as alt
 import pandas as pd
+import streamlit as st
+import sys
+from pathlib import Path
 
-from db import *
+# Add project root to path for backend imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from backend.db import *
 
 def get_monthly_profit_chart(refresh_token: int):
     monthly_profit_df = get_monthly_profit_df(st.session_state["refresh_token"])

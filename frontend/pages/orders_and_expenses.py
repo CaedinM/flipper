@@ -2,14 +2,18 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import datetime as dt
-
-from psycopg2.extras import execute_values
+import sys
 from pathlib import Path
 
-from db import *
-from charts import *
-from components.new_order_form import render_new_order_form
-from state import init_state
+from psycopg2.extras import execute_values
+
+# Add project root to path for backend imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from backend.db import *
+from ..components.charts import *
+from ..components.new_order_form import render_new_order_form
+from ..state import init_state
 
 
 if "refresh_token" not in st.session_state:

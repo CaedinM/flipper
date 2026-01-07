@@ -2,9 +2,14 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import psycopg2
+import sys
+from pathlib import Path
 
-from db import run_query_df, insert_order_with_items
-from utils import sanitize_order_num
+# Add project root to path for backend imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from backend.db import run_query_df, insert_order_with_items
+from .utils import sanitize_order_num
 
 def render_new_order_form():
     # Load item options
