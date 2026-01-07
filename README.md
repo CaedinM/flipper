@@ -6,21 +6,21 @@ This project blends **data engineering, product analytics, and autonomous AI age
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
-### 📦 Inventory & Order Management
+### Inventory & Order Management
 - Log purchases and sales with full cost basis tracking
 - Automatically update inventory levels
 - Support for new items added dynamically at order time
 - PostgreSQL-backed relational schema for long-term data integrity
 
-### 📊 Analytics Dashboard (Streamlit)
+### Analytics Dashboard (Streamlit)
 - Revenue, profit, and margin tracking
 - Monthly KPIs and trends
 - Item-level performance breakdowns
 - Interactive charts (Altair)
 
-### 🤖 AI Market Research Agents (CrewAI)
+### AI Market Research Agents (CrewAI)
 - Autonomous agents scan upcoming drops and releases
 - Evaluate resale potential using:
   - Brand demand
@@ -30,7 +30,7 @@ This project blends **data engineering, product analytics, and autonomous AI age
 
 ---
 
-## 🧱 Tech Stack
+## Tech Stack
 
 **Backend & Data**
 - Python
@@ -52,22 +52,34 @@ This project blends **data engineering, product analytics, and autonomous AI age
 
 ---
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```bash
 flipper/
-├── app.py                     # Main Streamlit entry point (Overview)
-├── pages/                     # Streamlit multipage views
-│   ├── inventory.py
-│   ├── orders_and_expenses.py
-│   └── sales.py
-├── components/                # Reusable UI components
-│   └── new_order_form.py
-├── agents_notebook/           # CrewAI agents
-│   └── market_research.py
-├── sql/
-│   └── schema.sql             # PostgreSQL schema
-├── charts.py                  # Altair chart definitions
-├── db.py                      # Database access layer
-├── requirements.txt
+├── backend/                   # Backend services and data layer
+│   ├── db.py                  # Database access layer
+│   ├── sql/                   # SQL schema and queries
+│   │   ├── schema.sql         # PostgreSQL schema
+│   │   └── releases.sql
+│   └── crews/                 # CrewAI agent crews
+│       └── sneaker_market_reseach/
+│           ├── notebooks/     # Jupyter notebooks for testing
+│           │   └── test_market_research_crew.ipynb
+│           ├── scripts/       # Agent scripts
+│           └── utils.py       # Utility functions
+├── frontend/                  # Streamlit frontend application
+│   ├── app.py                # Main Streamlit entry point (Overview)
+│   ├── state.py              # Session state management
+│   ├── assets/               # Static assets
+│   │   └── flipper_logo.png
+│   ├── components/           # Reusable UI components
+│   │   ├── charts.py         # Altair chart definitions
+│   │   ├── new_order_form.py # Order entry form component
+│   │   └── utils.py          # Component utilities
+│   └── pages/                # Streamlit multipage views
+│       ├── AI_Market_Insights.py
+│       ├── inventory.py
+│       ├── orders_and_expenses.py
+│       └── sales.py
+├── requirements.txt          # Python dependencies
 └── README.md
