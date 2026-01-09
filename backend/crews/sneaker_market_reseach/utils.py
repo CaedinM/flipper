@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from datetime import date
+from datetime import date, timedelta
 
 def slugify(s: str) -> str:
     s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
@@ -15,3 +15,8 @@ def make_item_key(product_name: str, release_date: date, brand: str | None = Non
         parts.insert(0, slugify(brand))
     parts.append(release_date.isoformat())
     return "_".join(parts)
+
+def get_date_range():
+    today = date.today()
+    cutoff = today + timedelta(days=21)
+    return today, cutoff

@@ -1,12 +1,11 @@
 from __future__ import annotations
 from crewai import Crew, Process
-from .tasks import build_tasks
+from .agents import sneaker_scout, sneaker_market_analyst
+from .tasks import sneaker_scout_task, sneaker_market_analyst_task
 
-def build_crew() -> Crew:
-    sneaker_scout_task, sneaker_market_analyst_task = build_tasks()
-    return Crew(
-        agents=[sneaker_scout_task.agent, sneaker_market_analyst_task.agent],
-        tasks=[sneaker_scout_task, sneaker_market_analyst_task],
-        process=Process.sequential,
-        verbose=True,
-    )
+sneaker_research_crew = Crew(
+    agents=[sneaker_scout, sneaker_market_analyst],
+    tasks=[sneaker_scout_task, sneaker_market_analyst_task],
+    process=Process.sequential,
+    verbose=True,
+)
