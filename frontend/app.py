@@ -3,7 +3,7 @@ import pandas as pd
 import altair as alt
 import datetime as dt
 
-from psycopg2.extras import execute_values
+from psycopg2.extras import execute_values  
 from pathlib import Path
 
 import sys
@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from backend.db import *
 from components.charts import *
 from components.new_order_form import render_new_order_form
+from components.new_sale_form import render_new_sale_form
 from state import init_state
 
 if "refresh_token" not in st.session_state:
@@ -28,11 +29,15 @@ st.set_page_config(
 
 def render_overview():
     refresh_token = st.session_state["refresh_token"]
-    logo_path = Path("assets/flipper_logo.png")
+    # Get absolute path to logo (assets folder is in frontend directory)
+    frontend_dir = Path(__file__).parent
+    logo_path = frontend_dir / "assets" / "flipper_logo.png"
     top_left, top_mid, top_right = st.columns([1.2, 3, 2])
 
     if "show_new_order" not in st.session_state:
         st.session_state.show_new_order = False
+    if "show_new_sale" not in st.session_state:
+        st.session_state.show_new_sale = False
 
     with top_left:
         st.image(str(logo_path), use_column_width=True)
@@ -46,12 +51,24 @@ def render_overview():
             unsafe_allow_html=True,
         )
     with top_right:
-        if st.button("➕ Log New Order", use_container_width=True):
-            st.session_state.show_new_order = not st.session_state.get("show_new_order", False)
+        col_order, col_sale = st.columns(2)
+        with col_order:
+            if st.button("➕ Log New Order", use_container_width=True):
+                st.session_state.show_new_order = not st.session_state.get("show_new_order", False)
+                st.session_state.show_new_sale = False  # Close sale form if open
+        
+        with col_sale:
+            if st.button("💰 Log New Sale", use_container_width=True):
+                st.session_state.show_new_sale = not st.session_state.get("show_new_sale", False)
+                st.session_state.show_new_order = False  # Close order form if open
         
         if st.session_state.get("order_saved_success"):
             st.success("✅ Order saved successfully!")
             st.session_state.order_saved_success = False
+        
+        if st.session_state.get("sale_saved_success"):
+            st.success("✅ Sale saved successfully!")
+            st.session_state.sale_saved_success = False
 
     if st.session_state.get("show_new_order", False):
         with st.expander("New Order", expanded=True):
@@ -59,6 +76,19 @@ def render_overview():
             if saved:
                 st.session_state.show_new_order = False
                 st.session_state.order_saved_success = True
+
+                # force fresh data
+                st.session_state.refresh_token += 1
+                st.cache_data.clear()
+
+                st.rerun()
+
+    if st.session_state.get("show_new_sale", False):
+        with st.expander("New Sale", expanded=True):
+            saved = render_new_sale_form()
+            if saved:
+                st.session_state.show_new_sale = False
+                st.session_state.sale_saved_success = True
 
                 # force fresh data
                 st.session_state.refresh_token += 1
@@ -123,6 +153,7 @@ def render_overview():
     with col1:
         st.subheader("Recent Purchases")
         order_items_df = get_order_items_df(st.session_state["refresh_token"])
+        order_items_df = order_items_df.sort_values(by="Date", ascending=False)
         st.dataframe(order_items_df,
         use_container_width=True,
         hide_index=True,
@@ -136,6 +167,7 @@ def render_overview():
     with col2:
         st.subheader("Recent Sales")
         sales_df = get_sales_df(st.session_state["refresh_token"])
+        sales_df = sales_df.sort_values(by="Date", ascending=False)
         st.dataframe(sales_df,
         use_container_width=True,
         hide_index=True,

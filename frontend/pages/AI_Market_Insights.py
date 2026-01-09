@@ -6,18 +6,19 @@ import sys
 from pathlib import Path
 
 # Add project root to path for backend imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
-from ..state import init_state
-from backend.db import run_query_df # adjust to your helper names
-from backend.crews.sneaker_market_reseach.agents.market_research import run_market_research  # your CrewAI runner
+from frontend.state import init_state
 
 if "refresh_token" not in st.session_state:
     init_state()
 
 st.set_page_config(page_title="AI Market Insights", layout="wide")
-st.title("🤖 AI Market Insights")
-st.caption("Let AI agents find upcoming profitable drop for you")
+st.title("AI Market Insights")
+st.caption("Let AI agents find upcoming profitable drops for you")
+
+st.caption("Note: Only works for sneakers currently, updates coming soon!")
 
 col1, col2, col3 = st.columns([2,1,1])
 with col1:

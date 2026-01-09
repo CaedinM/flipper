@@ -8,12 +8,13 @@ from pathlib import Path
 from psycopg2.extras import execute_values
 
 # Add project root to path for backend imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
 from backend.db import *
-from ..components.charts import *
-from ..components.new_order_form import render_new_order_form
-from ..state import init_state
+from frontend.components.charts import *
+from frontend.components.new_order_form import render_new_order_form
+from frontend.state import init_state
 
 
 if "refresh_token" not in st.session_state:

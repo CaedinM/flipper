@@ -152,6 +152,23 @@ def get_monthly_profit_df(refresh_token: int):
         ORDER BY m.month;
         """, refresh_token)
 
+def get_sale_items_by_sale_id(sale_id: int, refresh_token: int) -> pd.DataFrame:
+    """
+    Get all items for a specific sale.
+    Returns a DataFrame with item details and quantities.
+    """
+    return run_query_df("""
+        SELECT 
+            si.quantity,
+            i.item_id,
+            i.description AS item_description,
+            i.category
+        FROM sale_items si
+        JOIN items i ON si.item_id = i.item_id
+        WHERE si.sale_id = %s
+        ORDER BY i.description
+        """, refresh_token, params=(sale_id,))
+
 def get_total_profit_df(refresh_token: int):
     return run_query_df("""
         WITH sale_profit AS (
@@ -235,24 +252,94 @@ def insert_order_with_items(order_data: dict, items_rows: list[dict]):
 
                 # commits automatically when exiting "with get_conn() as conn:" if no exception
 
-# def upsert_item(description: str, category: str | None, retail_value: float | None, refresh_token: int) -> int:
-#     description = (description or "").strip()
-#     if not description:
-#         raise ValueError("Item description cannot be empty.")
+def insert_sale_with_items(sale_data: dict, items_rows: list[dict]):
+    """
+    sale_data: dict for sales table (sale_date, platform, sale_revenue)
+    items_rows: list of dicts for sale_items table rows (item_id, quantity)
+    unit_cost_basis_at_sale is automatically fetched from items.avg_unit_cost_basis
+    """
+    with get_dict_connection() as conn:
+        with conn.cursor() as cur:
+            # insert into sales and get the sale_id
+            cur.execute(
+                """
+                INSERT INTO sales (sale_date, platform, sale_revenue)
+                VALUES (%s, %s, %s)
+                RETURNING sale_id
+                """,
+                (
+                    sale_data["sale_date"],
+                    sale_data["platform"],
+                    sale_data["sale_revenue"]
+                ),
+            )
+            sale_id = cur.fetchone()["sale_id"]
+            
+            # Get avg_unit_cost_basis for each item from the items table
+            item_ids = [r["item_id"] for r in items_rows]
+            if item_ids:
+                # Use tuple for IN clause
+                placeholders = ','.join(['%s'] * len(item_ids))
+                cur.execute(
+                    f"""
+                    SELECT item_id, COALESCE(avg_unit_cost_basis, 0) AS avg_unit_cost_basis
+                    FROM items
+                    WHERE item_id IN ({placeholders})
+                    """,
+                    tuple(item_ids)
+                )
+                cost_basis_map = {row["item_id"]: row["avg_unit_cost_basis"] for row in cur.fetchall()}
+            else:
+                cost_basis_map = {}
+            
+            # insert into sale_items with cost basis from items table
+            values = [
+                (
+                    sale_id,
+                    r["item_id"],
+                    r["quantity"],
+                    cost_basis_map.get(r["item_id"], 0)  # Use avg_unit_cost_basis from items table
+                )
+                for r in items_rows
+            ]
+
+            execute_values(
+                cur,
+                """
+                INSERT INTO sale_items (sale_id, item_id, quantity, unit_cost_basis_at_sale)
+                VALUES %s
+                """,
+                values,
+            )
+
+            # commits automatically when exiting "with get_conn() as conn:" if no exception
+
+def upsert_item(description: str, category: str | None = None) -> int:
+    """
+    Insert a new item or get existing item_id.
+    Returns the item_id.
+    """
+    description = (description or "").strip()
+    if not description:
+        raise ValueError("Item description cannot be empty.")
     
-#     row = run_query_df("""
-#         INSERT INTO items (description, category, retail_value)
-#         VALUES (%s, COALESCE(%s, ''), COALESCE(%s, 0.00)
-#         ON CONFLICT (description)
-#         DO UPDATE SET
-#             category = CASE
-#                 WHEN items.category = '' AND EXCLUDED.category <> '' THEN EXCLUDED.category
-#                 ELSE items.category
-#             END,
-#             retail_value = COALESCE(items.retail_value, EXCLUDED.retail_value)
-#         RETURNING item_id;
-#     """, refresh_token, (description, category, retail_value))
-    
-#     return row["item_id"]
+    with get_dict_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO items (description, category)
+                VALUES (%s, COALESCE(%s, ''))
+                ON CONFLICT (description)
+                DO UPDATE SET
+                    category = CASE
+                        WHEN items.category = '' AND EXCLUDED.category <> '' THEN EXCLUDED.category
+                        ELSE items.category
+                    END
+                RETURNING item_id;
+                """,
+                (description, category or "")
+            )
+            result = cur.fetchone()
+            return result["item_id"]
 
 

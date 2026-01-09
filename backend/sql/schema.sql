@@ -29,7 +29,6 @@ CREATE TABLE sales (
     sale_date DATE NOT NULL,
     platform TEXT NOT NULL,
     sale_revenue NUMERIC(12,2) NOT NULL,
-    unit_cost_basis_at_sale NUMERIC(12,2)
 );
 
 CREATE TABLE sale_items (
@@ -37,7 +36,8 @@ CREATE TABLE sale_items (
     sale_id INT REFERENCES sales(sale_id),
     item_id INT REFERENCES items(item_id),
     quantity INT NOT NULL CHECK (quantity > 0)
-)
+    unit_cost_basis_at_sale NUMERIC(12,2)
+);
 
 CREATE TABLE returns (
     return_id SERIAL PRIMARY KEY,
