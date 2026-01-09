@@ -1,11 +1,6 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
 import datetime as dt
-
-from psycopg2.extras import execute_values  
-from pathlib import Path
-
 import sys
 from pathlib import Path
 # Add project root to path for backend imports
@@ -51,16 +46,13 @@ def render_overview():
             unsafe_allow_html=True,
         )
     with top_right:
-        col_order, col_sale = st.columns(2)
-        with col_order:
-            if st.button("➕ Log New Order", use_container_width=True):
-                st.session_state.show_new_order = not st.session_state.get("show_new_order", False)
-                st.session_state.show_new_sale = False  # Close sale form if open
+        if st.button("➕ Log New Order", use_container_width=True):
+            st.session_state.show_new_order = not st.session_state.get("show_new_order", False)
+            st.session_state.show_new_sale = False  # Close sale form if open
         
-        with col_sale:
-            if st.button("💰 Log New Sale", use_container_width=True):
-                st.session_state.show_new_sale = not st.session_state.get("show_new_sale", False)
-                st.session_state.show_new_order = False  # Close order form if open
+        if st.button("💰 Log New Sale", use_container_width=True):
+            st.session_state.show_new_sale = not st.session_state.get("show_new_sale", False)
+            st.session_state.show_new_order = False  # Close order form if open
         
         if st.session_state.get("order_saved_success"):
             st.success("✅ Order saved successfully!")

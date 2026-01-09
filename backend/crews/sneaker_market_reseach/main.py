@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import Any
 from .crew import sneaker_research_crew
 from .utils import get_date_range
 

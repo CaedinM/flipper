@@ -20,7 +20,6 @@ def render_new_order_form():
     """)
     item_options = items_df["description"].tolist()
     description_to_id = dict(zip(items_df["description"], items_df["item_id"]))
-    description_to_category = dict(zip(items_df["description"], items_df["category"]))
     
     # Load existing categories from database
     categories_df = run_query_df("""

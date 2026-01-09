@@ -1,11 +1,8 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
 import datetime as dt
 import sys
 from pathlib import Path
-
-from psycopg2.extras import execute_values
 
 # Add project root to path for backend imports
 project_root = Path(__file__).parent.parent.parent
@@ -13,7 +10,6 @@ sys.path.insert(0, str(project_root))
 
 from backend.db import *
 from frontend.components.charts import *
-from frontend.components.new_order_form import render_new_order_form
 from frontend.state import init_state
 
 
