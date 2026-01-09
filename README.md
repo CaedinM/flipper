@@ -56,30 +56,39 @@ This project blends **data engineering, product analytics, and autonomous AI age
 
 ```bash
 flipper/
-├── backend/                   # Backend services and data layer
-│   ├── db.py                  # Database access layer
-│   ├── sql/                   # SQL schema and queries
-│   │   ├── schema.sql         # PostgreSQL schema
-│   │   └── releases.sql
-│   └── crews/                 # CrewAI agent crews
+├── backend/                           # Backend services and data layer
+│   ├── db.py                          # Database access layer
+│   ├── sql/                           # SQL schema and queries
+│   │   ├── schema.sql                 # PostgreSQL schema
+│   │   └── releases.sql               # Release tracking schema
+│   └── crews/                         # CrewAI agent crews
 │       └── sneaker_market_reseach/
-│           ├── notebooks/     # Jupyter notebooks for testing
-│           │   └── test_market_research_crew.ipynb
-│           ├── scripts/       # Agent scripts
-│           └── utils.py       # Utility functions
-├── frontend/                  # Streamlit frontend application
-│   ├── app.py                # Main Streamlit entry point (Overview)
-│   ├── state.py              # Session state management
-│   ├── assets/               # Static assets
+│           ├── __init__.py
+│           ├── agents.py              # CrewAI agent definitions
+│           ├── crew.py                # Crew configuration
+│           ├── main.py                # Main entry point for crew execution
+│           ├── models.py              # Pydantic models for agent outputs
+│           ├── tasks.py               # CrewAI task definitions
+│           ├── tools.py               # Agent tools (search, scrape, etc.)
+│           ├── utils.py               # Utility functions
+│           └── notebooks/             # Jupyter notebooks for testing
+│               └── test_market_research_crew.ipynb
+├── frontend/                          # Streamlit frontend application
+│   ├── app.py                         # Main Streamlit entry point (Overview)
+│   ├── state.py                       # Session state management
+│   ├── assets/                        # Static assets
 │   │   └── flipper_logo.png
-│   ├── components/           # Reusable UI components
-│   │   ├── charts.py         # Altair chart definitions
-│   │   ├── new_order_form.py # Order entry form component
-│   │   └── utils.py          # Component utilities
-│   └── pages/                # Streamlit multipage views
-│       ├── AI_Market_Insights.py
-│       ├── inventory.py
-│       ├── orders_and_expenses.py
-│       └── sales.py
-├── requirements.txt          # Python dependencies
+│   ├── components/                    # Reusable UI components
+│   │   ├── charts.py                  # Altair chart definitions
+│   │   ├── new_order_form.py          # Order entry form component
+│   │   ├── new_sale_form.py           # Sale entry form component
+│   │   ├── sale_details.py            # Sale details display component
+│   │   └── utils.py                   # Component utilities
+│   └── pages/                         # Streamlit multipage views
+│       ├── AI_Market_Insights.py      # AI market research page
+│       ├── Inventory.py               # Inventory management page
+│       ├── Orders_&_Expenses.py       # Orders and expenses page
+│       └── Sales.py                   # Sales tracking page
+├── requirements.txt                   # Python dependencies
 └── README.md
+
