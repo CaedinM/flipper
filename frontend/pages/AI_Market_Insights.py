@@ -21,11 +21,11 @@ col1, col2, col3 = st.columns([2,1,1])
 with col1:
     category = st.selectbox(
         "Category",
-        ["Pokemon Cards", "Sports Cards", "Streetwear", "Toys", "Vinyl"],
+        ["Sneakers"],
         index=0
     )
 with col2:
-    max_items = st.number_input(label="Suggestions", min_value=1, max_value=6, step=1)
+    max_items = st.number_input(label="Max Results", min_value=1, max_value=10, step=1)
 with col3:
     run_scan = st.button("🔎 Run AI Scan", type="primary", use_container_width=True)
 
