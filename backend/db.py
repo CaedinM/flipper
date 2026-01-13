@@ -342,4 +342,130 @@ def upsert_item(description: str, category: str | None = None) -> int:
             result = cur.fetchone()
             return result["item_id"]
 
+def get_order_items_by_order_num(order_num: str, refresh_token: int) -> pd.DataFrame:
+    """
+    Get all items for a specific order by order_num.
+    Returns a DataFrame with item details, quantities, and current PAS fees.
+    """
+    return run_query_df(
+        """
+        SELECT 
+            oi.order_item_id,
+            oi.item_id,
+            i.description AS "Item Description",
+            i.category AS "Category",
+            oi.quantity AS "Quantity",
+            oi.purchase_price_per_item AS "Purchase Price Per Item",
+            oi.pas_fee_per_item AS "PAS Fee Per Item"
+        FROM order_items oi
+        JOIN items i ON oi.item_id = i.item_id
+        WHERE oi.order_num = %s
+        ORDER BY i.description
+        """,
+        refresh_token,
+        (order_num,)
+    )
+
+def update_pas_fees_for_order(order_num: str, pas_fee_updates: list[dict]):
+    """
+    Update PAS fees for order items.
+    
+    Args:
+        order_num: The order number
+        pas_fee_updates: List of dicts with 'order_item_id' and 'pas_fee_per_item'
+    """
+    with get_dict_connection() as conn:
+        with conn.cursor() as cur:
+            for update in pas_fee_updates:
+                cur.execute(
+                    """
+                    UPDATE order_items
+                    SET pas_fee_per_item = %s
+                    WHERE order_item_id = %s AND order_num = %s
+                    """,
+                    (
+                        update["pas_fee_per_item"],
+                        update["order_item_id"],
+                        order_num
+                    )
+                )
+            # commits automatically when exiting "with get_conn() as conn:" if no exception
+
+def create_update_avg_cost_basis_trigger():
+    """
+    Create or replace the trigger function and trigger that automatically updates
+    avg_unit_cost_basis in the items table when order_items are inserted, updated, or deleted.
+    """
+    trigger_function_sql = """
+    CREATE OR REPLACE FUNCTION update_item_avg_cost_basis()
+    RETURNS TRIGGER AS $$
+    DECLARE
+        affected_item_id INT;
+    BEGIN
+        -- Determine which item_id was affected
+        IF TG_OP = 'DELETE' THEN
+            affected_item_id := OLD.item_id;
+        ELSE
+            affected_item_id := NEW.item_id;
+        END IF;
+        
+        -- Update avg_unit_cost_basis for only the affected item using the cost_basis view logic
+        WITH item_totals AS (
+            SELECT
+                order_num,
+                SUM(quantity) AS num_items
+            FROM order_items
+            GROUP BY order_num
+        ),
+        unit_costs AS (
+            SELECT
+                o.order_num,
+                oi.item_id,
+                oi.quantity,
+                ROUND(
+                    oi.purchase_price_per_item * (1 + o.tax_rate)
+                    + oi.pas_fee_per_item
+                    + (o.shipping_cost / NULLIF(it.num_items, 0)),
+                    2
+                ) AS unit_cost_basis
+            FROM order_items oi
+            JOIN orders o ON o.order_num = oi.order_num
+            JOIN item_totals it ON it.order_num = oi.order_num
+            WHERE oi.item_id = affected_item_id
+        ),
+        item_avg_cost AS (
+            SELECT
+                ROUND(
+                    SUM(quantity * unit_cost_basis) / NULLIF(SUM(quantity), 0),
+                    2
+                ) AS avg_cost_basis
+            FROM unit_costs
+        )
+        -- Update avg_unit_cost_basis (will be NULL if item has no order_items)
+        UPDATE items
+        SET avg_unit_cost_basis = (
+            SELECT avg_cost_basis FROM item_avg_cost
+        )
+        WHERE item_id = affected_item_id;
+        
+        RETURN COALESCE(NEW, OLD);
+    END;
+    $$ LANGUAGE plpgsql;
+    """
+    
+    trigger_sql = """
+    DROP TRIGGER IF EXISTS trigger_update_item_avg_cost_basis ON order_items;
+    CREATE TRIGGER trigger_update_item_avg_cost_basis
+        AFTER INSERT OR UPDATE OR DELETE ON order_items
+        FOR EACH ROW
+        EXECUTE FUNCTION update_item_avg_cost_basis();
+    """
+    
+    with get_dict_connection() as conn:
+        with conn.cursor() as cur:
+            # Create the function
+            cur.execute(trigger_function_sql)
+            # Create the trigger
+            cur.execute(trigger_sql)
+            # commits automatically when exiting "with get_conn() as conn:" if no exception
 

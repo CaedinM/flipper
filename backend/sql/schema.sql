@@ -97,4 +97,3 @@ SELECT
         2
     ) AS avg_unit_cost_basis
 FROM unit_costs uc;
-

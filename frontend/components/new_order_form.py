@@ -83,7 +83,7 @@ def render_new_order_form():
                     options=category_options,
                     help="Select category for new items. Required for new items.",
                     required=False,
-                ),
+                    ),
                 "quantity": st.column_config.NumberColumn("Quantity", min_value=1, step=1),
                 "purchase_price_per_item": st.column_config.NumberColumn("Price (Per Item)", min_value=0.00, step=0.01),
                 "pas_fee_per_item": st.column_config.NumberColumn("PAS Fee (Per Item)", min_value=0.00, step=0.01),
