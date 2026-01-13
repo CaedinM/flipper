@@ -76,8 +76,9 @@ def render_add_pas_fee_form():
             "Item Description",
             "Category",
             "Quantity",
-            "Purchase Price Per Item",
-            "PAS Fee Per Item"
+            "Price Tag",
+            "PAS Fee Per Item",
+            "Cost Basis"
         ]].copy()
         
         with st.form("add_pas_fee_form", clear_on_submit=False):
@@ -87,12 +88,12 @@ def render_add_pas_fee_form():
                 edit_df,
                 use_container_width=True,
                 hide_index=True,
-                disabled=["Item Description", "Category", "Quantity", "Purchase Price Per Item"],
+                disabled=["Item Description", "Category", "Quantity", "Price Tag", "Cost Basis"],
                 column_config={
                     "Item Description": st.column_config.TextColumn("Item Description"),
                     "Category": st.column_config.TextColumn("Category"),
                     "Quantity": st.column_config.NumberColumn("Quantity", format="%d"),
-                    "Purchase Price Per Item": st.column_config.NumberColumn("Purchase Price Per Item", format="$%.2f"),
+                    "Price Tag": st.column_config.NumberColumn("Price Tag", format="$%.2f"),
                     "PAS Fee Per Item": st.column_config.NumberColumn(
                         "PAS Fee Per Item",
                         min_value=0.00,
@@ -100,6 +101,7 @@ def render_add_pas_fee_form():
                         format="$%.2f",
                         help="Enter the PAS (Purchase Assistance Service) fee per item"
                     ),
+                    "Cost Basis": st.column_config.NumberColumn("Cost Basis", format="$%.2f"),
                 }
             )
             

@@ -10,6 +10,7 @@ sys.path.insert(0, str(project_root))
 
 from backend.db import *
 from frontend.components.charts import *
+from frontend.components.add_pas_fee_form import render_add_pas_fee_form
 from frontend.state import init_state
 
 
@@ -24,11 +25,40 @@ def render_orders_and_expenses():
     total_spent = (order_items_df["Quantity"] * order_items_df["Cost (Per Unit)"]).sum()
     
     st.header("Orders and Expenses")
-    col_a, col_b = st.columns(2)
+    
+    # Top section with metrics and PAS fee form
+    col_a, col_b = st.columns([2, 1])
     with col_a:
-        st.metric("Items Purchased", f"{items_purchased}")
+        col_metric_1, col_metric_2 = st.columns(2)
+        with col_metric_1:
+            st.metric("Items Purchased", f"{items_purchased}")
+        with col_metric_2:
+            st.metric("Total Spent", f"${total_spent:,.2f}")
     with col_b:
-        st.metric("Total Spent", f"${total_spent:,.2f}")
+        # Initialize session state for PAS fee form
+        if "show_add_pas_fee" not in st.session_state:
+            st.session_state.show_add_pas_fee = False
+        
+        if st.button("➕ Add/Update PAS Fees", use_container_width=True, key="show_pas_fee_btn"):
+            st.session_state.show_add_pas_fee = not st.session_state.get("show_add_pas_fee", False)
+        
+        if st.session_state.get("pas_fee_saved_success"):
+            st.success("✅ PAS fees updated successfully!")
+            st.session_state.pas_fee_saved_success = False
+    
+    # Show PAS fee form if button was clicked
+    if st.session_state.get("show_add_pas_fee", False):
+        with st.expander("Add/Update PAS Fees", expanded=True):
+            saved = render_add_pas_fee_form()
+            if saved:
+                st.session_state.show_add_pas_fee = False
+                st.session_state.pas_fee_saved_success = True
+                
+                # Force fresh data
+                st.session_state.refresh_token += 1
+                st.cache_data.clear()
+                
+                st.rerun()
 
     st.subheader("Order History")
     st.caption(f"Updated at: {dt.datetime.now()}")

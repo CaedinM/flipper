@@ -81,11 +81,10 @@ def get_order_items_df(refresh_token: int):
             i.category AS "Category", 
             i.description AS "Item", 
             oi.quantity AS "Quantity", 
-            cb.unit_cost_basis AS "Cost (Per Unit)"
+            oi.cost_basis AS "Cost (Per Unit)"
         FROM order_items oi
         JOIN items i ON oi.item_id = i.item_id
         INNER JOIN orders o ON o.order_num = oi.order_num
-        JOIN cost_basis cb ON cb.order_num = oi.order_num AND cb.item_id = oi.item_id
         ORDER BY o.order_date DESC;
         """, refresh_token)
 
@@ -229,13 +228,13 @@ def insert_order_with_items(order_data: dict, items_rows: list[dict]):
                         order_data["tax_rate"]
                     ),
                 )
-                # insert into order_items
+                # insert into order_items (cost_basis will be calculated by trigger)
                 values = [
                     (
                         order_data["order_num"],
                         r["item_id"],
                         r["quantity"],
-                        r["purchase_price_per_item"],
+                        r["pricetag"],
                         r["pas_fee_per_item"]
                     )
                     for r in items_rows
@@ -244,7 +243,7 @@ def insert_order_with_items(order_data: dict, items_rows: list[dict]):
                 execute_values(
                     cur,
                     """
-                    INSERT INTO order_items (order_num, item_id, quantity, purchase_price_per_item, pas_fee_per_item)
+                    INSERT INTO order_items (order_num, item_id, quantity, pricetag, pas_fee_per_item)
                     VALUES %s
                     """,
                     values,
@@ -256,7 +255,7 @@ def insert_sale_with_items(sale_data: dict, items_rows: list[dict]):
     """
     sale_data: dict for sales table (sale_date, platform, sale_revenue)
     items_rows: list of dicts for sale_items table rows (item_id, quantity)
-    unit_cost_basis_at_sale is automatically fetched from items.avg_unit_cost_basis
+    unit_cost_basis_at_sale is automatically fetched from items.avg_cost_basis
     """
     with get_dict_connection() as conn:
         with conn.cursor() as cur:
@@ -275,20 +274,20 @@ def insert_sale_with_items(sale_data: dict, items_rows: list[dict]):
             )
             sale_id = cur.fetchone()["sale_id"]
             
-            # Get avg_unit_cost_basis for each item from the items table
+            # Get avg_cost_basis for each item from the items table
             item_ids = [r["item_id"] for r in items_rows]
             if item_ids:
                 # Use tuple for IN clause
                 placeholders = ','.join(['%s'] * len(item_ids))
                 cur.execute(
                     f"""
-                    SELECT item_id, COALESCE(avg_unit_cost_basis, 0) AS avg_unit_cost_basis
+                    SELECT item_id, COALESCE(avg_cost_basis, 0) AS avg_cost_basis
                     FROM items
                     WHERE item_id IN ({placeholders})
                     """,
                     tuple(item_ids)
                 )
-                cost_basis_map = {row["item_id"]: row["avg_unit_cost_basis"] for row in cur.fetchall()}
+                cost_basis_map = {row["item_id"]: row["avg_cost_basis"] for row in cur.fetchall()}
             else:
                 cost_basis_map = {}
             
@@ -298,7 +297,7 @@ def insert_sale_with_items(sale_data: dict, items_rows: list[dict]):
                     sale_id,
                     r["item_id"],
                     r["quantity"],
-                    cost_basis_map.get(r["item_id"], 0)  # Use avg_unit_cost_basis from items table
+                    cost_basis_map.get(r["item_id"], 0)  # Use avg_cost_basis from items table
                 )
                 for r in items_rows
             ]
@@ -355,8 +354,9 @@ def get_order_items_by_order_num(order_num: str, refresh_token: int) -> pd.DataF
             i.description AS "Item Description",
             i.category AS "Category",
             oi.quantity AS "Quantity",
-            oi.purchase_price_per_item AS "Purchase Price Per Item",
-            oi.pas_fee_per_item AS "PAS Fee Per Item"
+            oi.pricetag AS "Price Tag",
+            oi.pas_fee_per_item AS "PAS Fee Per Item",
+            oi.cost_basis AS "Cost Basis"
         FROM order_items oi
         JOIN items i ON oi.item_id = i.item_id
         WHERE oi.order_num = %s
@@ -394,7 +394,7 @@ def update_pas_fees_for_order(order_num: str, pas_fee_updates: list[dict]):
 def create_update_avg_cost_basis_trigger():
     """
     Create or replace the trigger function and trigger that automatically updates
-    avg_unit_cost_basis in the items table when order_items are inserted, updated, or deleted.
+    avg_cost_basis in the items table when order_items are inserted, updated, or deleted.
     """
     trigger_function_sql = """
     CREATE OR REPLACE FUNCTION update_item_avg_cost_basis()
@@ -409,41 +409,20 @@ def create_update_avg_cost_basis_trigger():
             affected_item_id := NEW.item_id;
         END IF;
         
-        -- Update avg_unit_cost_basis for only the affected item using the cost_basis view logic
-        WITH item_totals AS (
-            SELECT
-                order_num,
-                SUM(quantity) AS num_items
-            FROM order_items
-            GROUP BY order_num
-        ),
-        unit_costs AS (
-            SELECT
-                o.order_num,
-                oi.item_id,
-                oi.quantity,
-                ROUND(
-                    oi.purchase_price_per_item * (1 + o.tax_rate)
-                    + oi.pas_fee_per_item
-                    + (o.shipping_cost / NULLIF(it.num_items, 0)),
-                    2
-                ) AS unit_cost_basis
-            FROM order_items oi
-            JOIN orders o ON o.order_num = oi.order_num
-            JOIN item_totals it ON it.order_num = oi.order_num
-            WHERE oi.item_id = affected_item_id
-        ),
-        item_avg_cost AS (
+        -- Update avg_cost_basis for only the affected item using precalculated cost_basis
+        WITH item_avg_cost AS (
             SELECT
                 ROUND(
-                    SUM(quantity * unit_cost_basis) / NULLIF(SUM(quantity), 0),
+                    SUM(quantity * cost_basis) / NULLIF(SUM(quantity), 0),
                     2
                 ) AS avg_cost_basis
-            FROM unit_costs
+            FROM order_items
+            WHERE item_id = affected_item_id
+            AND cost_basis IS NOT NULL
         )
-        -- Update avg_unit_cost_basis (will be NULL if item has no order_items)
+        -- Update avg_cost_basis (will be NULL if item has no order_items)
         UPDATE items
-        SET avg_unit_cost_basis = (
+        SET avg_cost_basis = (
             SELECT avg_cost_basis FROM item_avg_cost
         )
         WHERE item_id = affected_item_id;

@@ -9,9 +9,9 @@ today, cutoff = get_date_range()
 
 if __name__ == "__main__":
     result = sneaker_research_crew.kickoff(
-        inputs={
-            "today": today.isoformat(),
-            "cutoff_date": cutoff.isoformat(),
-            "num_items": num_items
-        }
-    )
+    inputs={
+        "today": today.isoformat(),
+        "cutoff_date": cutoff.isoformat(),
+        "num_items": num_items
+    }
+)

@@ -34,7 +34,7 @@ def render_new_order_form():
 
     if "line_items_df" not in st.session_state:
         st.session_state.line_items_df = pd.DataFrame(
-            [{"description": None, "category": None, "quantity": 1, "purchase_price_per_item": 0.0, "pas_fee_per_item": 0.0}]
+            [{"description": None, "category": None, "quantity": 1, "pricetag": 0.0, "pas_fee_per_item": 0.0}]
         )
 
     with st.form("new_order_form", clear_on_submit=False): # Remove enter to submit when streamlit is upgraded
@@ -85,7 +85,7 @@ def render_new_order_form():
                     required=False,
                     ),
                 "quantity": st.column_config.NumberColumn("Quantity", min_value=1, step=1),
-                "purchase_price_per_item": st.column_config.NumberColumn("Price (Per Item)", min_value=0.00, step=0.01),
+                "pricetag": st.column_config.NumberColumn("Price Tag", min_value=0.00, step=0.01),
                 "pas_fee_per_item": st.column_config.NumberColumn("PAS Fee (Per Item)", min_value=0.00, step=0.01),
             }
         )
@@ -169,12 +169,12 @@ def render_new_order_form():
                     "shipping_cost": shipping_cost,
                     "tax_rate": 0.0975 # HARD CODED TAX RATE FOR CALIFORNIA, IN FUTURE, LET USER SET LOCATION AND USE DICTIONARY TO SET TAX RATE
                 },
-                items_rows=items_to_insert[["item_id", "quantity", "purchase_price_per_item", "pas_fee_per_item"]].to_dict(orient="records")
+                items_rows=items_to_insert[["item_id", "quantity", "pricetag", "pas_fee_per_item"]].to_dict(orient="records")
                 )
             
             st.success(f"Saved order {order_num} with {len(edited_df)} item(s).")
             st.session_state.line_items_df = pd.DataFrame(
-                [{"description": None, "category": None, "quantity": 1, "purchase_price_per_item": 0.0, "pas_fee_per_item": 0.0}]
+                [{"description": None, "category": None, "quantity": 1, "pricetag": 0.0, "pas_fee_per_item": 0.0}]
             )
             return True
         
