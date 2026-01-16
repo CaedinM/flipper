@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-flipper}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:-flipper}
+    volumes:
+      - flipper_pgdata:/var/lib/postgresql/data
+      - ./backend/sql:/sql:ro
+      - ./docker/init-db:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-flipper} -d ${DB_NAME:-flipper}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "${STREAMLIT_PORT:-8501}:8501"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-flipper}
+      DB_USER: ${DB_USER:-flipper}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      # Optional AI features
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      OPEN_AI_API_KEY: ${OPEN_AI_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  flipper_pgdata:

@@ -6,10 +6,11 @@ from psycopg2.extras import RealDictCursor, execute_values
 from dotenv import load_dotenv
 from pathlib import Path
 
-# Load .env.local from project root
+# Load .env from project root only if it exists (Docker injects env vars directly)
 project_root = Path(__file__).parent.parent.parent
-env_path = project_root / ".env.local"
-load_dotenv(str(env_path), override=True)
+env_path = project_root / ".env"
+if env_path.exists():
+    load_dotenv(str(env_path), override=True)
 
 def get_dict_connection():
     """Get a database connection with RealDictCursor."""

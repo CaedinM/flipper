@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env
+*.egg-info/
+.eggs/
+
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+docker/
+
+# Misc
+*.log
+*.tmp
+.DS_Store

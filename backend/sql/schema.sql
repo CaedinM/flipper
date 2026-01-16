@@ -29,14 +29,14 @@ CREATE TABLE sales (
     sale_id SERIAL PRIMARY KEY,
     sale_date DATE NOT NULL,
     platform TEXT NOT NULL,
-    sale_revenue NUMERIC(12,2) NOT NULL,
+    sale_revenue NUMERIC(12,2) NOT NULL
 );
 
 CREATE TABLE sale_items (
     sale_item_id SERIAL PRIMARY KEY,
     sale_id INT REFERENCES sales(sale_id),
     item_id INT REFERENCES items(item_id),
-    quantity INT NOT NULL CHECK (quantity > 0)
+    quantity INT NOT NULL CHECK (quantity > 0),
     unit_cost_basis_at_sale NUMERIC(12,2)
 );
 
@@ -53,7 +53,7 @@ CREATE TABLE return_items (
     item_id INT NOT NULL REFERENCES items(item_id),
     quantity INT NOT NULL CHECK (quantity > 0),
     UNIQUE (return_id, item_id)
-)
+);
 
 CREATE TABLE other_expenses (
     expense_id SERIAL PRIMARY KEY,

@@ -1,11 +1,15 @@
 import os
+from pathlib import Path
 import psycopg2
 import pandas as pd
 from psycopg2.extras import RealDictCursor, execute_values
 from dotenv import load_dotenv
 import streamlit as st
 
-load_dotenv(".env.local")
+# Load .env only if it exists (Docker injects env vars directly)
+env_file = Path(".env")
+if env_file.exists():
+    load_dotenv(str(env_file))
 
 def get_dict_connection():
     return psycopg2.connect(
