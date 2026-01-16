@@ -47,48 +47,44 @@ This project blends **data engineering, product analytics, and autonomous AI age
 - LLM-powered market research agents
 
 **Dev Tools**
-- Conda / venv
+- Docker
 - Git & GitHub
+
+---
+
+## Getting Started
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/CaedinM/flipper.git
+cd flipper
+
+# 2. Set up environment
+cp .env.example .env
+# Edit .env to set DB_PASSWORD
+
+# 3. Run with Docker
+docker-compose up --build
+
+# 4. Open the app
+# http://localhost:8501
+```
 
 ---
 
 ## Project Structure
 
-```bash
+```
 flipper/
-├── backend/                           # Backend services and data layer
-│   ├── db.py                          # Database access layer
-│   ├── sql/                           # SQL schema and queries
-│   │   ├── schema.sql                 # PostgreSQL schema
-│   │   └── releases.sql               # Release tracking schema
-│   └── crews/                         # CrewAI agent crews
-│       └── sneaker_market_reseach/
-│           ├── __init__.py
-│           ├── agents.py              # CrewAI agent definitions
-│           ├── crew.py                # Crew configuration
-│           ├── main.py                # Main entry point for crew execution
-│           ├── models.py              # Pydantic models for agent outputs
-│           ├── tasks.py               # CrewAI task definitions
-│           ├── tools.py               # Agent tools (search, scrape, etc.)
-│           ├── utils.py               # Utility functions
-│           └── notebooks/             # Jupyter notebooks for testing
-│               └── test_market_research_crew.ipynb
-├── frontend/                          # Streamlit frontend application
-│   ├── app.py                         # Main Streamlit entry point (Overview)
-│   ├── state.py                       # Session state management
-│   ├── assets/                        # Static assets
-│   │   └── flipper_logo.png
-│   ├── components/                    # Reusable UI components
-│   │   ├── charts.py                  # Altair chart definitions
-│   │   ├── new_order_form.py          # Order entry form component
-│   │   ├── new_sale_form.py           # Sale entry form component
-│   │   ├── sale_details.py            # Sale details display component
-│   │   └── utils.py                   # Component utilities
-│   └── pages/                         # Streamlit multipage views
-│       ├── AI_Market_Insights.py      # AI market research page
-│       ├── Inventory.py               # Inventory management page
-│       ├── Orders_&_Expenses.py       # Orders and expenses page
-│       └── Sales.py                   # Sales tracking page
-├── requirements.txt                   # Python dependencies
-└── README.md
+├── backend/
+│   ├── crews/          # CrewAI agent crews
+│   └── sql/            # Database schema and triggers
+├── frontend/
+│   ├── components/     # Reusable UI components
+│   └── pages/          # Streamlit pages
+├── docker/
+│   └── init-db/        # Database initialization scripts
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
 
