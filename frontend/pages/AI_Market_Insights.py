@@ -27,7 +27,7 @@ with col1:
 with col2:
     max_items = st.number_input(label="Max Results", min_value=1, max_value=10, step=1)
 with col3:
-    run_scan = st.button("🔎 Run AI Scan", type="primary", use_container_width=True)
+    run_scan = st.button("🔎 Run AI Scan", type="primary", width="stretch")
 
 if "suggestions" not in st.session_state:
     st.session_state.suggestions = []

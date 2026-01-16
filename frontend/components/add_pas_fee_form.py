@@ -86,7 +86,7 @@ def render_add_pas_fee_form():
             # Display order items with editable PAS fees
             edited_df = st.data_editor(
                 edit_df,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 disabled=["Item Description", "Category", "Quantity", "Price Tag", "Cost Basis"],
                 column_config={
@@ -107,9 +107,9 @@ def render_add_pas_fee_form():
             
             col_cancel, col_save = st.columns(2)
             with col_cancel:
-                cancelled = st.form_submit_button("Cancel", type="secondary", use_container_width=True)
+                cancelled = st.form_submit_button("Cancel", type="secondary", width="stretch")
             with col_save:
-                submitted = st.form_submit_button("Save PAS Fees", type="primary", use_container_width=True)
+                submitted = st.form_submit_button("Save PAS Fees", type="primary", width="stretch")
             
             if cancelled:
                 st.session_state.selected_order_num_pas = None

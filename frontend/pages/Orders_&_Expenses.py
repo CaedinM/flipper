@@ -39,7 +39,7 @@ def render_orders_and_expenses():
         if "show_add_pas_fee" not in st.session_state:
             st.session_state.show_add_pas_fee = False
         
-        if st.button("➕ Add/Update PAS Fees", use_container_width=True, key="show_pas_fee_btn"):
+        if st.button("➕ Add/Update PAS Fees", width="stretch", key="show_pas_fee_btn"):
             st.session_state.show_add_pas_fee = not st.session_state.get("show_add_pas_fee", False)
         
         if st.session_state.get("pas_fee_saved_success"):
@@ -72,11 +72,11 @@ def render_orders_and_expenses():
         "tax_rate": "Tax Rate"
         })
     orders_df["Tax Rate"] = orders_df["Tax Rate"] * 100
-    st.dataframe(orders_df, use_container_width=True)
+    st.dataframe(orders_df, width="stretch")
 
     expenses_df = run_query_df("SELECT * FROM other_expenses ORDER BY expense_date DESC;", st.session_state["refresh_token"])
     total_expenses = expenses_df['expense_cost'].sum()
     st.metric("Other Expenses", f"${total_expenses:,.2f}")
-    st.dataframe(expenses_df, use_container_width=True)
+    st.dataframe(expenses_df, width="stretch")
 
 render_orders_and_expenses()

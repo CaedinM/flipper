@@ -24,7 +24,7 @@ def render_inventory():
     
     st.subheader("Current Invetory") # INVENTORY TABLE
     inventory_df = get_inventory_df(st.session_state["refresh_token"])
-    st.dataframe(inventory_df, use_container_width=True, hide_index=True,
+    st.dataframe(inventory_df, width="stretch", hide_index=True,
     column_config={
         "Retail Value": st.column_config.NumberColumn(
             "Retail Value",

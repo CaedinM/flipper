@@ -65,7 +65,7 @@ def render_new_sale_form():
         edited_df = st.data_editor(
             st.session_state.sale_line_items_df,
             num_rows="dynamic",
-            use_container_width=True,
+            width="stretch",
             column_config={
                 "description": st.column_config.SelectboxColumn(
                     "Item (description)",
@@ -78,9 +78,9 @@ def render_new_sale_form():
         )
         col_cancel, col_save = st.columns(2)
         with col_cancel:
-            cancelled = st.form_submit_button("Cancel", type="primary", use_container_width=True)
+            cancelled = st.form_submit_button("Cancel", type="primary", width="stretch")
         with col_save:
-            submitted = st.form_submit_button("Save Sale", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("Save Sale", type="primary", width="stretch")
 
     st.session_state.sale_line_items_df = edited_df
 

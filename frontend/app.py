@@ -35,7 +35,7 @@ def render_overview():
         st.session_state.show_new_sale = False
 
     with top_left:
-        st.image(str(logo_path), use_column_width=True)
+        st.image(str(logo_path), width="stretch")
     with top_mid:
         st.markdown(
             """
@@ -46,11 +46,11 @@ def render_overview():
             unsafe_allow_html=True,
         )
     with top_right:
-        if st.button("➕ Log New Order", use_container_width=True):
+        if st.button("➕ Log New Order", width="stretch"):
             st.session_state.show_new_order = not st.session_state.get("show_new_order", False)
             st.session_state.show_new_sale = False  # Close sale form if open
         
-        if st.button("💰 Log New Sale", use_container_width=True):
+        if st.button("💰 Log New Sale", width="stretch"):
             st.session_state.show_new_sale = not st.session_state.get("show_new_sale", False)
             st.session_state.show_new_order = False  # Close order form if open
         
@@ -116,7 +116,7 @@ def render_overview():
 
 
     # Monthly Revenue Chart
-    st.altair_chart(get_monthly_profit_chart(st.session_state["refresh_token"]), use_container_width=True)
+    st.altair_chart(get_monthly_profit_chart(st.session_state["refresh_token"]), width="stretch")
 
     st.markdown("---")
 
@@ -147,7 +147,7 @@ def render_overview():
         order_items_df = get_order_items_df(st.session_state["refresh_token"])
         order_items_df = order_items_df.sort_values(by="Date", ascending=False)
         st.dataframe(order_items_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Cost (Per Unit)": st.column_config.NumberColumn("Cost (Per Unit)", format="$%.2f"),
@@ -161,7 +161,7 @@ def render_overview():
         sales_df = get_sales_df(st.session_state["refresh_token"])
         sales_df = sales_df.sort_values(by="Date", ascending=False)
         st.dataframe(sales_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Revenue": st.column_config.NumberColumn("Revenue", format="$%.2f"),

@@ -94,7 +94,7 @@ def render_sale_details(sale_id: int, refresh_token: int):
         
         st.dataframe(
             display_df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "Item Description": st.column_config.TextColumn("Item Description"),

@@ -79,7 +79,7 @@ def render_sales():
     # Use data_editor with selection mode for clickable rows
     edited_df = st.data_editor(
         display_df_display,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         disabled=True,  # Make it read-only
         column_config={
