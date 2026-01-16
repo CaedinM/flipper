@@ -7,5 +7,5 @@ sneaker_research_crew = Crew(
     agents=[sneaker_scout, sneaker_market_analyst],
     tasks=[sneaker_scout_task, sneaker_market_analyst_task],
     process=Process.sequential,
-    verbose=True,
+    verbose=False,
 )

@@ -6,13 +6,14 @@ from dotenv import load_dotenv
 import os
 from pathlib import Path
 
-# Load .env.local from project root (4 levels up from agents.py)
+# Load .env from project root (4 levels up from agents.py)
 project_root = Path(__file__).parent.parent.parent.parent
-env_path = project_root / ".env.local"
-load_dotenv(str(env_path), override=True)
+env_path = project_root / ".env"
+if env_path.exists():
+    load_dotenv(str(env_path), override=True)
 
 OPENAI_API_KEY = os.getenv("OPEN_AI_API_KEY")
-llm = LLM(model="gpt-4o", api_key=OPENAI_API_KEY)
+llm = LLM(model="gpt-4o-mini", api_key=OPENAI_API_KEY)
 
 sneaker_scout = Agent(
     role="Upcoming Sneaker Release Scout",
