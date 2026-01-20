@@ -395,6 +395,74 @@ def update_pas_fees_for_order(order_num: str, pas_fee_updates: list[dict]):
                 )
             # commits automatically when exiting "with get_conn() as conn:" if no exception
 
+def get_inventory_count_df(refresh_token: int):
+    """Returns count of unsold items in inventory."""
+    return run_query_df("""
+        WITH purchased AS (
+            SELECT item_id, SUM(quantity) AS total_purchased FROM order_items GROUP BY item_id
+        ),
+        sold AS (
+            SELECT item_id, SUM(quantity) AS total_sold FROM sale_items GROUP BY item_id
+        ),
+        returns AS (
+            SELECT item_id, SUM(quantity) AS total_returned FROM return_items GROUP BY item_id
+        )
+        SELECT COALESCE(SUM(
+            COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0)
+        ), 0) AS inventory_count
+        FROM items i
+        LEFT JOIN purchased p ON p.item_id = i.item_id
+        LEFT JOIN sold s ON s.item_id = i.item_id
+        LEFT JOIN returns r ON r.item_id = i.item_id
+        """, refresh_token)
+
+def get_inventory_value_df(refresh_token: int):
+    """Returns total cost value of unsold inventory."""
+    return run_query_df("""
+        WITH purchased AS (
+            SELECT item_id, SUM(quantity) AS total_purchased FROM order_items GROUP BY item_id
+        ),
+        sold AS (
+            SELECT item_id, SUM(quantity) AS total_sold FROM sale_items GROUP BY item_id
+        ),
+        returns AS (
+            SELECT item_id, SUM(quantity) AS total_returned FROM return_items GROUP BY item_id
+        )
+        SELECT COALESCE(SUM(
+            (COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0))
+            * i.avg_cost_basis
+        ), 0) AS inventory_value
+        FROM items i
+        LEFT JOIN purchased p ON p.item_id = i.item_id
+        LEFT JOIN sold s ON s.item_id = i.item_id
+        LEFT JOIN returns r ON r.item_id = i.item_id
+        WHERE (COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0)) > 0
+        """, refresh_token)
+
+def get_net_profit_df(refresh_token: int):
+    """Returns total profit minus all other_expenses."""
+    return run_query_df("""
+        WITH sale_profit AS (
+            SELECT s.sale_id, s.sale_revenue - COALESCE(SUM(si.quantity * si.unit_cost_basis_at_sale), 0) AS profit
+            FROM sales s
+            LEFT JOIN sale_items si ON si.sale_id = s.sale_id
+            GROUP BY s.sale_id, s.sale_revenue
+        ),
+        total_expenses AS (
+            SELECT COALESCE(SUM(expense_cost), 0) AS expenses FROM other_expenses
+        )
+        SELECT COALESCE((SELECT SUM(profit) FROM sale_profit), 0) - (SELECT expenses FROM total_expenses) AS net_profit
+        """, refresh_token)
+
+def get_sales_velocity_df(refresh_token: int):
+    """Returns average items sold per week (last 4 weeks)."""
+    return run_query_df("""
+        SELECT COALESCE(ROUND(SUM(si.quantity) / 4.0, 2), 0) AS items_per_week
+        FROM sales s
+        LEFT JOIN sale_items si ON si.sale_id = s.sale_id
+        WHERE s.sale_date >= CURRENT_DATE - INTERVAL '28 days'
+        """, refresh_token)
+
 def create_update_avg_cost_basis_trigger():
     """
     Create or replace the trigger function and trigger that automatically updates

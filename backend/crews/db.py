@@ -71,10 +71,23 @@ def update_agent_run(run_id: int, status: str, output: dict | None = None, error
                 )
             )
 
+def get_existing_item_keys() -> set[str]:
+    """
+    Get all existing item_keys from the releases table.
+
+    Returns:
+        Set of existing item_key strings
+    """
+    with get_dict_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT item_key FROM releases")
+            return {row["item_key"] for row in cur.fetchall()}
+
+
 def insert_releases(run_id: int, releases: list[dict]):
     """
     Insert release records linked to an agent run.
-    
+
     Args:
         run_id: The agent run ID
         releases: List of dicts with keys:
@@ -87,6 +100,7 @@ def insert_releases(run_id: int, releases: list[dict]):
             - seed_sources: list[str] | None
             - resale_estimate: int
             - confidence_score: int (0-100)
+            - image_url: str | None
     """
     with get_dict_connection() as conn:
         with conn.cursor() as cur:
@@ -101,17 +115,19 @@ def insert_releases(run_id: int, releases: list[dict]):
                     r.get("retailers") or [],
                     r.get("seed_sources") or [],
                     r.get("resale_estimate"),
-                    r.get("confidence_score")
+                    r.get("confidence_score"),
+                    r.get("image_url")
                 )
                 for r in releases
             ]
-            
+
             execute_values(
                 cur,
                 """
                 INSERT INTO releases (
                     run_id, item_key, product_name, brand, release_date,
-                    retail_price, retailers, seed_sources, resale_estimate, confidence_score
+                    retail_price, retailers, seed_sources, resale_estimate, confidence_score,
+                    image_url
                 )
                 VALUES %s
                 ON CONFLICT (run_id, item_key) DO UPDATE SET
@@ -122,7 +138,8 @@ def insert_releases(run_id: int, releases: list[dict]):
                     retailers = EXCLUDED.retailers,
                     seed_sources = EXCLUDED.seed_sources,
                     resale_estimate = EXCLUDED.resale_estimate,
-                    confidence_score = EXCLUDED.confidence_score
+                    confidence_score = EXCLUDED.confidence_score,
+                    image_url = EXCLUDED.image_url
                 """,
                 values,
             )

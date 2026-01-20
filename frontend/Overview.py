@@ -122,20 +122,35 @@ def render_overview():
 
     st.header("All-Time Stats")
 
-    col_01, col_02 = st.columns(2)
-    with col_01:
-        col_uno, col_dos = st.columns(2)
-        with col_uno:
-            items_sold_df = run_query_df("SELECT SUM(quantity) AS items_sold FROM sale_items", st.session_state["refresh_token"])
-            items_sold = int(items_sold_df["items_sold"].iloc[0] or 0)
-            st.metric("Items Sold", f"{items_sold}")
-        with col_dos:
-            total_profit_df = get_total_profit_df(st.session_state["refresh_token"])
-            total_profit = float(total_profit_df["total_profit"].iloc[0] or 0)
-            st.metric("Item Profit", f"${total_profit:,.2f}")
+    # Row 1: Items Sold | Item Profit | Net Profit
+    row1_col1, row1_col2, row1_col3 = st.columns(3)
+    with row1_col1:
+        items_sold_df = run_query_df("SELECT SUM(quantity) AS items_sold FROM sale_items", st.session_state["refresh_token"])
+        items_sold = int(items_sold_df["items_sold"].iloc[0] or 0)
+        st.metric("Items Sold", f"{items_sold}")
+    with row1_col2:
+        total_profit_df = get_total_profit_df(st.session_state["refresh_token"])
+        total_profit = float(total_profit_df["total_profit"].iloc[0] or 0)
+        st.metric("Item Profit", f"${total_profit:,.2f}")
+    with row1_col3:
+        net_profit_df = get_net_profit_df(st.session_state["refresh_token"])
+        net_profit = float(net_profit_df["net_profit"].iloc[0] or 0)
+        st.metric("Net Profit", f"${net_profit:,.2f}")
 
-    with col_02:
-        pass
+    # Row 2: Inventory Count | Inventory Value | Sales Velocity
+    row2_col1, row2_col2, row2_col3 = st.columns(3)
+    with row2_col1:
+        inventory_count_df = get_inventory_count_df(st.session_state["refresh_token"])
+        inventory_count = int(inventory_count_df["inventory_count"].iloc[0] or 0)
+        st.metric("Inventory Count", f"{inventory_count}")
+    with row2_col2:
+        inventory_value_df = get_inventory_value_df(st.session_state["refresh_token"])
+        inventory_value = float(inventory_value_df["inventory_value"].iloc[0] or 0)
+        st.metric("Inventory Value", f"${inventory_value:,.2f}")
+    with row2_col3:
+        sales_velocity_df = get_sales_velocity_df(st.session_state["refresh_token"])
+        sales_velocity = float(sales_velocity_df["items_per_week"].iloc[0] or 0)
+        st.metric("Sales Velocity", f"{sales_velocity:.2f} /week")
 
 
     st.markdown("---")
