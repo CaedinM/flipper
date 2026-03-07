@@ -77,13 +77,19 @@ docker-compose up --build
 ```
 flipper/
 ├── backend/
-│   ├── crews/          # CrewAI agent crews
-│   └── sql/            # Database schema and triggers
+│   ├── crews/          # DB helpers for agent runs
+│   ├── scrapers/       # Release calendar scrapers (sneakers, Pokemon)
+│   ├── sql/            # Database schema and triggers
+│   └── db.py           # Query functions and DB connection
 ├── frontend/
-│   ├── components/     # Reusable UI components
-│   └── pages/          # Streamlit pages
+│   ├── assets/         # Static assets (logo, images)
+│   ├── components/     # Reusable UI components and forms
+│   ├── pages/          # Streamlit pages (Inventory, Sales, Orders, Insights, Calendars)
+│   ├── Overview.py     # Main dashboard page
+│   └── state.py        # Session state initialization
 ├── docker/
 │   └── init-db/        # Database initialization scripts
+├── initial_data/       # Seed CSVs for initial data import
 ├── Dockerfile
 ├── docker-compose.yml
 └── requirements.txt
