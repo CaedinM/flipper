@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS releases (
     seed_sources TEXT[],
     resale_estimate INT,
     confidence_score INT CHECK (confidence_score >= 0 AND confidence_score <= 100),
+    image_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
     UNIQUE (run_id, item_key)  

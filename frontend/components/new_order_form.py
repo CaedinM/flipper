@@ -102,6 +102,12 @@ def render_new_order_form():
         st.rerun()
 
     if submitted:
+        # Normalize columns — data_editor can return lists in some edge cases
+        edited_df = edited_df.copy()
+        def _unwrap(x):
+            return x[0] if isinstance(x, list) and x else (None if isinstance(x, list) else x)
+        edited_df["description"] = edited_df["description"].apply(_unwrap)
+        edited_df["category"] = edited_df["category"].apply(_unwrap)
         errors = []
         if not order_num.strip():
             errors.append("Order # is required.")

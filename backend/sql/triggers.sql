@@ -2,9 +2,10 @@
 -- TRIGGER: calculate_order_item_cost_basis
 -- ============================================
 -- Automatically calculates and stores cost_basis in order_items table
--- when rows are inserted or updated.
--- 
--- Cost basis formula: pricetag * (1 + tax_rate) + pas_fee_per_item + (shipping_cost / num_items_in_order)
+-- when rows are updated (not INSERT — inserts provide cost_basis directly
+-- from total_cost allocation in application code).
+--
+-- UPDATE formula: pricetag * (1 + tax_rate) + pas_fee_per_item + (shipping_cost / num_items_in_order)
 
 CREATE OR REPLACE FUNCTION calculate_order_item_cost_basis()
 RETURNS TRIGGER AS $$
@@ -14,15 +15,20 @@ DECLARE
     num_items_in_order INT;
     calculated_cost_basis NUMERIC(12,2);
 BEGIN
+    -- On INSERT, if cost_basis was already provided by the application, use it directly.
+    IF TG_OP = 'INSERT' AND NEW.cost_basis IS NOT NULL THEN
+        RETURN NEW;
+    END IF;
+
     -- Get order details
-    SELECT o.tax_rate, o.shipping_cost, 
+    SELECT o.tax_rate, o.shipping_cost,
            (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_num = COALESCE(NEW.order_num, OLD.order_num))
            + CASE WHEN TG_OP = 'INSERT' THEN NEW.quantity ELSE 0 END
            - CASE WHEN TG_OP = 'UPDATE' AND OLD.order_num = NEW.order_num THEN OLD.quantity ELSE 0 END
     INTO order_tax_rate, order_shipping_cost, num_items_in_order
     FROM orders o
     WHERE o.order_num = COALESCE(NEW.order_num, OLD.order_num);
-    
+
     -- Calculate cost basis
     calculated_cost_basis := ROUND(
         COALESCE(NEW.pricetag, OLD.pricetag) * (1 + order_tax_rate)
@@ -30,7 +36,7 @@ BEGIN
         + (order_shipping_cost / NULLIF(num_items_in_order, 0)),
         2
     );
-    
+
     -- Set the cost_basis value
     IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
         NEW.cost_basis := calculated_cost_basis;

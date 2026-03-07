@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 import sys
 from pathlib import Path
 from datetime import date
@@ -9,6 +10,7 @@ sys.path.insert(0, str(project_root))
 
 from frontend.state import init_state
 from backend.db import run_query_df
+from backend.scrapers.sneaker_releases import run_release_scraper
 
 if "refresh_token" not in st.session_state:
     init_state()
@@ -16,6 +18,20 @@ if "refresh_token" not in st.session_state:
 st.set_page_config(page_title="Sneaker Calendar", layout="wide")
 st.title("Sneaker Release Calendar")
 st.caption("Upcoming sneaker releases")
+
+if st.button("🔄 Refresh Releases"):
+    with st.spinner("Scraping latest releases..."):
+        try:
+            result_df = run_release_scraper(num_items=50)
+            st.session_state.refresh_token += 1
+            count = len(result_df) if not result_df.empty else 0
+            if count:
+                st.success(f"Added {count} new release(s)!")
+            else:
+                st.info("No new releases found (all up to date or none available).")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Failed to refresh: {e}")
 
 
 def get_upcoming_releases(refresh_token: int):
@@ -78,7 +94,7 @@ if not releases_df.empty:
                             st.caption(release["brand"])
                     with col_price:
                         price = release["retail_price"]
-                        st.caption(f"${int(price)}" if price else "TBD")
+                        st.caption(f"${int(price)}" if price and pd.notna(price) else "TBD")
 
         st.divider()
 else:

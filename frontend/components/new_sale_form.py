@@ -89,6 +89,11 @@ def render_new_sale_form():
         st.rerun()
 
     if submitted:
+        # Normalize columns — data_editor can return lists in some edge cases
+        edited_df = edited_df.copy()
+        edited_df["description"] = edited_df["description"].apply(
+            lambda x: x[0] if isinstance(x, list) and x else (None if isinstance(x, list) else x)
+        )
         errors = []
         if edited_df.empty:
             errors.append("Add at least one item to save sale.")

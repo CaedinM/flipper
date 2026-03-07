@@ -115,15 +115,19 @@ def render_overview():
         pass
 
 
-    # Monthly Revenue Chart
-    st.altair_chart(get_monthly_profit_chart(st.session_state["refresh_token"]), width="stretch")
+    # Monthly Charts
+    chart_col1, chart_col2 = st.columns(2)
+    with chart_col1:
+        st.altair_chart(get_monthly_profit_chart(st.session_state["refresh_token"]), width="stretch")
+    with chart_col2:
+        st.altair_chart(get_monthly_items_sold_chart(st.session_state["refresh_token"]), width="stretch")
 
     st.markdown("---")
 
     st.header("All-Time Stats")
 
-    # Row 1: Items Sold | Item Profit | Net Profit
-    row1_col1, row1_col2, row1_col3 = st.columns(3)
+    # Row 1: Items Sold | Item Profit | Net Profit | Avg Profit Margin
+    row1_col1, row1_col2, row1_col3, row1_col4 = st.columns(4)
     with row1_col1:
         items_sold_df = run_query_df("SELECT SUM(quantity) AS items_sold FROM sale_items", st.session_state["refresh_token"])
         items_sold = int(items_sold_df["items_sold"].iloc[0] or 0)
@@ -136,8 +140,12 @@ def render_overview():
         net_profit_df = get_net_profit_df(st.session_state["refresh_token"])
         net_profit = float(net_profit_df["net_profit"].iloc[0] or 0)
         st.metric("Net Profit", f"${net_profit:,.2f}")
+    with row1_col4:
+        margin_df = get_avg_profit_margin_df(st.session_state["refresh_token"])
+        avg_margin = float(margin_df["avg_profit_margin"].iloc[0] or 0)
+        st.metric("Avg Profit Margin", f"{avg_margin:.1f}%")
 
-    # Row 2: Inventory Count | Inventory Value | Sales Velocity
+    # Row 2: Inventory Count | Inventory Value | Sales Velocity | {blank}
     row2_col1, row2_col2, row2_col3 = st.columns(3)
     with row2_col1:
         inventory_count_df = get_inventory_count_df(st.session_state["refresh_token"])

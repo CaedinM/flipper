@@ -50,3 +50,38 @@ def get_monthly_profit_chart(refresh_token: int):
         )
     )
     return chart
+
+def get_monthly_items_sold_chart(refresh_token: int):
+    df = get_monthly_items_sold_df(refresh_token)
+    df["month"] = pd.to_datetime(df["month"], utc=True)
+    df["items_sold"] = pd.to_numeric(df["items_sold"], errors="coerce")
+    df["month_label"] = df["month"].dt.to_period("M").dt.strftime("%b %Y")
+
+    chart = (
+        alt.Chart(df)
+        .mark_bar()
+        .encode(
+            x=alt.X(
+                "month_label:N",
+                title="Month",
+                sort=list(df["month_label"]),
+                axis=alt.Axis(labelAngle=0)
+            ),
+            y=alt.Y(
+                "items_sold:Q",
+                title="Items Sold",
+                axis=alt.Axis(format="d")
+            ),
+            tooltip=[
+                alt.Tooltip("month_label:N", title="Month"),
+                alt.Tooltip("items_sold:Q", title="Items Sold"),
+            ],
+            color=alt.value("#042600")
+        )
+        .properties(
+            width="container",
+            height=350,
+            title="Items Sold per Month",
+        )
+    )
+    return chart

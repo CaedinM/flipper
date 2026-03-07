@@ -155,6 +155,31 @@ def get_monthly_profit_df(refresh_token: int):
         ORDER BY m.month;
         """, refresh_token)
 
+def get_monthly_items_sold_df(refresh_token: int):
+    return run_query_df("""
+        WITH month_series AS (
+            SELECT generate_series(
+                date_trunc('month', CURRENT_DATE) - interval '5 months',
+                date_trunc('month', CURRENT_DATE),
+                interval '1 month'
+            )::date AS month
+        ),
+        monthly_sold AS (
+            SELECT
+                date_trunc('month', s.sale_date)::date AS month,
+                SUM(si.quantity) AS items_sold
+            FROM sales s
+            JOIN sale_items si ON si.sale_id = s.sale_id
+            GROUP BY date_trunc('month', s.sale_date)::date
+        )
+        SELECT
+            m.month,
+            COALESCE(ms.items_sold, 0) AS items_sold
+        FROM month_series m
+        LEFT JOIN monthly_sold ms ON ms.month = m.month
+        ORDER BY m.month;
+        """, refresh_token)
+
 def get_sale_items_by_sale_id(sale_id: int, refresh_token: int) -> pd.DataFrame:
     """
     Get all items for a specific sale.
@@ -232,22 +257,37 @@ def insert_order_with_items(order_data: dict, items_rows: list[dict]):
                         order_data["tax_rate"]
                     ),
                 )
-                # insert into order_items (cost_basis will be calculated by trigger)
-                values = [
-                    (
+                # Compute cost_basis per item from total_cost (the actual amount paid),
+                # allocated proportionally by pricetag so the sum equals total_cost.
+                total_pricetag_value = sum(r["pricetag"] * r["quantity"] for r in items_rows)
+                total_qty = sum(r["quantity"] for r in items_rows)
+                values = []
+                for r in items_rows:
+                    if total_pricetag_value > 0:
+                        cost_basis = round(
+                            order_data["total_cost"] * r["pricetag"] / total_pricetag_value
+                            + r["pas_fee_per_item"],
+                            2,
+                        )
+                    else:
+                        # Fallback: equal allocation when all pricetags are zero
+                        cost_basis = round(
+                            order_data["total_cost"] / total_qty + r["pas_fee_per_item"],
+                            2,
+                        )
+                    values.append((
                         order_data["order_num"],
                         r["item_id"],
                         r["quantity"],
                         r["pricetag"],
-                        r["pas_fee_per_item"]
-                    )
-                    for r in items_rows
-                ]
+                        r["pas_fee_per_item"],
+                        cost_basis,
+                    ))
 
                 execute_values(
                     cur,
                     """
-                    INSERT INTO order_items (order_num, item_id, quantity, pricetag, pas_fee_per_item)
+                    INSERT INTO order_items (order_num, item_id, quantity, pricetag, pas_fee_per_item, cost_basis)
                     VALUES %s
                     """,
                     values,
@@ -439,6 +479,25 @@ def get_inventory_value_df(refresh_token: int):
         WHERE (COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0)) > 0
         """, refresh_token)
 
+def get_avg_profit_margin_df(refresh_token: int):
+    """Returns overall profit margin as a percentage: total profit / total revenue * 100."""
+    return run_query_df("""
+        WITH sale_data AS (
+            SELECT
+                s.sale_revenue,
+                s.sale_revenue - COALESCE(SUM(si.quantity * si.unit_cost_basis_at_sale), 0) AS profit
+            FROM sales s
+            LEFT JOIN sale_items si ON si.sale_id = s.sale_id
+            GROUP BY s.sale_id, s.sale_revenue
+        )
+        SELECT
+            CASE WHEN SUM(sale_revenue) > 0
+                 THEN ROUND(SUM(profit) / SUM(sale_revenue) * 100, 1)
+                 ELSE 0
+            END AS avg_profit_margin
+        FROM sale_data;
+        """, refresh_token)
+
 def get_net_profit_df(refresh_token: int):
     """Returns total profit minus all other_expenses."""
     return run_query_df("""
@@ -462,6 +521,63 @@ def get_sales_velocity_df(refresh_token: int):
         LEFT JOIN sale_items si ON si.sale_id = s.sale_id
         WHERE s.sale_date >= CURRENT_DATE - INTERVAL '28 days'
         """, refresh_token)
+
+def create_calculate_cost_basis_trigger():
+    """
+    Re-apply the calculate_order_item_cost_basis trigger.
+    On INSERT, uses the application-provided cost_basis (from total_cost allocation).
+    On UPDATE, falls back to the pricetag-based formula.
+    """
+    trigger_function_sql = """
+    CREATE OR REPLACE FUNCTION calculate_order_item_cost_basis()
+    RETURNS TRIGGER AS $$
+    DECLARE
+        order_tax_rate NUMERIC(5,4);
+        order_shipping_cost NUMERIC(10,2);
+        num_items_in_order INT;
+        calculated_cost_basis NUMERIC(12,2);
+    BEGIN
+        -- On INSERT, if cost_basis was already provided by the application, use it directly.
+        IF TG_OP = 'INSERT' AND NEW.cost_basis IS NOT NULL THEN
+            RETURN NEW;
+        END IF;
+
+        SELECT o.tax_rate, o.shipping_cost,
+               (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_num = COALESCE(NEW.order_num, OLD.order_num))
+               + CASE WHEN TG_OP = 'INSERT' THEN NEW.quantity ELSE 0 END
+               - CASE WHEN TG_OP = 'UPDATE' AND OLD.order_num = NEW.order_num THEN OLD.quantity ELSE 0 END
+        INTO order_tax_rate, order_shipping_cost, num_items_in_order
+        FROM orders o
+        WHERE o.order_num = COALESCE(NEW.order_num, OLD.order_num);
+
+        calculated_cost_basis := ROUND(
+            COALESCE(NEW.pricetag, OLD.pricetag) * (1 + order_tax_rate)
+            + COALESCE(NEW.pas_fee_per_item, OLD.pas_fee_per_item)
+            + (order_shipping_cost / NULLIF(num_items_in_order, 0)),
+            2
+        );
+
+        IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+            NEW.cost_basis := calculated_cost_basis;
+            RETURN NEW;
+        ELSE
+            RETURN OLD;
+        END IF;
+    END;
+    $$ LANGUAGE plpgsql;
+    """
+    trigger_sql = """
+    DROP TRIGGER IF EXISTS trigger_calculate_cost_basis ON order_items;
+    CREATE TRIGGER trigger_calculate_cost_basis
+        BEFORE INSERT OR UPDATE ON order_items
+        FOR EACH ROW
+        EXECUTE FUNCTION calculate_order_item_cost_basis();
+    """
+    with get_dict_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(trigger_function_sql)
+            cur.execute(trigger_sql)
+
 
 def create_update_avg_cost_basis_trigger():
     """
