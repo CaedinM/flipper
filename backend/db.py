@@ -479,6 +479,68 @@ def get_inventory_value_df(refresh_token: int):
         WHERE (COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0)) > 0
         """, refresh_token)
 
+def get_profit_margin_by_platform_df(refresh_token: int):
+    """Returns profit margin % grouped by selling platform."""
+    return run_query_df("""
+        WITH sale_profit AS (
+            SELECT
+                s.platform,
+                s.sale_revenue,
+                s.sale_revenue - COALESCE(SUM(si.quantity * si.unit_cost_basis_at_sale), 0) AS profit
+            FROM sales s
+            LEFT JOIN sale_items si ON si.sale_id = s.sale_id
+            GROUP BY s.sale_id, s.platform, s.sale_revenue
+        )
+        SELECT
+            platform,
+            COUNT(*)                                                     AS num_sales,
+            ROUND(SUM(profit) / NULLIF(SUM(sale_revenue), 0) * 100, 1) AS profit_margin,
+            ROUND(SUM(profit), 2)                                       AS total_profit,
+            ROUND(SUM(sale_revenue), 2)                                 AS total_revenue
+        FROM sale_profit
+        GROUP BY platform
+        ORDER BY profit_margin DESC NULLS LAST;
+        """, refresh_token)
+
+def get_expense_breakdown_df(refresh_token: int):
+    """Returns a breakdown of money lost to PAS fees, shipping, and other expenses."""
+    return run_query_df("""
+        SELECT
+            (SELECT COALESCE(SUM(pas_fee_per_item * quantity), 0) FROM order_items) AS total_pas_fees,
+            (SELECT COALESCE(SUM(shipping_cost), 0) FROM orders)                    AS total_shipping,
+            (SELECT COALESCE(SUM(expense_cost), 0) FROM other_expenses)             AS total_other_expenses
+    """, refresh_token)
+
+def get_profit_margin_by_category_df(refresh_token: int):
+    """Returns profit margin % grouped by item category, using actual sale revenue allocated by quantity."""
+    return run_query_df("""
+        WITH per_sale_qty AS (
+            SELECT sale_id, SUM(quantity) AS total_qty
+            FROM sale_items
+            GROUP BY sale_id
+        ),
+        item_revenue AS (
+            SELECT
+                si.sale_id,
+                COALESCE(NULLIF(i.category, ''), 'Uncategorized') AS category,
+                s.sale_revenue * si.quantity / psq.total_qty AS allocated_revenue,
+                si.quantity * si.unit_cost_basis_at_sale AS cost
+            FROM sale_items si
+            JOIN items i ON si.item_id = i.item_id
+            JOIN sales s ON si.sale_id = s.sale_id
+            JOIN per_sale_qty psq ON psq.sale_id = si.sale_id
+        )
+        SELECT
+            category,
+            COUNT(DISTINCT sale_id)                                                            AS num_sales,
+            ROUND(SUM(allocated_revenue - cost) / NULLIF(SUM(allocated_revenue), 0) * 100, 1) AS profit_margin,
+            ROUND(SUM(allocated_revenue - cost), 2)                                            AS total_profit,
+            ROUND(SUM(allocated_revenue), 2)                                                   AS total_revenue
+        FROM item_revenue
+        GROUP BY category
+        ORDER BY profit_margin DESC NULLS LAST;
+        """, refresh_token)
+
 def get_avg_profit_margin_df(refresh_token: int):
     """Returns overall profit margin as a percentage: total profit / total revenue * 100."""
     return run_query_df("""
