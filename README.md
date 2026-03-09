@@ -1,8 +1,6 @@
 # 🦭 Flipper — All-in-One Resell Analytics Platform
 
-Flipper is an **AI-powered resale analytics platform** designed for modern resellers of collectibles, sneakers, tickets, and limited-release goods. It combines **inventory tracking, order logging, profitability analytics, and AI-driven market research** into a single streamlined workflow.
-
-This project blends **data engineering, product analytics, and autonomous AI agents** to help users identify high-value opportunities and track performance over time.
+Flipper is a **resale analytics platform** designed for modern resellers of collectibles, sneakers, tickets, and limited-release goods. It combines **inventory tracking, order logging, deep profitability analytics, and automated release calendar scraping** into a single streamlined workflow.
 
 ---
 
@@ -15,18 +13,23 @@ This project blends **data engineering, product analytics, and autonomous AI age
 - PostgreSQL-backed relational schema for long-term data integrity
 
 ### Analytics Dashboard (Streamlit)
-- Revenue, profit, and margin tracking
-- Monthly KPIs and trends
-- Item-level performance breakdowns
+- Revenue, profit, and margin tracking across all categories
+- Monthly KPIs and trend charts
+- Item-level and platform-level performance breakdowns
+- Cost breakdown analysis — PAS fees, shipping, and other expenses
+- Profit margin by category and by selling platform
 - Interactive charts (Altair)
 
-### AI Market Research Agents (CrewAI)
-- Autonomous agents scan upcoming drops and releases
-- Evaluate resale potential using:
-  - Brand demand
-  - Scarcity
-  - Historical resale behavior
-- Rank opportunities by expected ROI
+### Insights Page
+- Side-by-side profit margin breakdowns by **category** and **platform**
+- Full expense breakdown with totals for fees, shipping, and miscellaneous costs
+- Designed to surface where money is being made — and where it's being lost
+
+### Release Calendars (Web Scrapers)
+- Automated scrapers pull upcoming drop schedules for:
+  - **Sneakers** — upcoming releases with retail and estimated resale data
+  - **Pokémon** — upcoming set and product release dates
+- Data is stored and displayed in dedicated calendar pages for quick reference
 
 ---
 
@@ -42,9 +45,8 @@ This project blends **data engineering, product analytics, and autonomous AI age
 - Altair
 - Pandas
 
-**AI & Agents**
-- CrewAI
-- LLM-powered market research agents
+**Scrapers**
+- Custom Python scrapers for sneaker and Pokémon release calendars
 
 **Dev Tools**
 - Docker
@@ -77,14 +79,14 @@ docker-compose up --build
 ```
 flipper/
 ├── backend/
-│   ├── crews/          # DB helpers for agent runs
+│   ├── crews/          # DB helpers (legacy)
 │   ├── scrapers/       # Release calendar scrapers (sneakers, Pokemon)
 │   ├── sql/            # Database schema and triggers
 │   └── db.py           # Query functions and DB connection
 ├── frontend/
 │   ├── assets/         # Static assets (logo, images)
 │   ├── components/     # Reusable UI components and forms
-│   ├── pages/          # Streamlit pages (Inventory, Sales, Orders, Insights, Calendars)
+│   ├── pages/          # Streamlit pages (Inventory, Insights, Sales, Orders, Calendars)
 │   ├── Overview.py     # Main dashboard page
 │   └── state.py        # Session state initialization
 ├── docker/
@@ -93,4 +95,4 @@ flipper/
 ├── Dockerfile
 ├── docker-compose.yml
 └── requirements.txt
-
+```
