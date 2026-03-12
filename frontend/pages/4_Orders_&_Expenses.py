@@ -11,6 +11,7 @@ sys.path.insert(0, str(project_root))
 from backend.db import *
 from frontend.components.charts import *
 from frontend.components.add_pas_fee_form import render_add_pas_fee_form
+from frontend.components.theme import inject_theme
 from frontend.state import init_state
 
 
@@ -20,6 +21,7 @@ if "refresh_token" not in st.session_state:
 st.set_page_config(page_title="Orders and Expenses", page_icon="🦭", layout="wide")
 
 def render_orders_and_expenses():
+    inject_theme()
     order_items_df = get_order_items_df(st.session_state["refresh_token"])
     items_purchased = order_items_df["Quantity"].sum()
     total_spent = (order_items_df["Quantity"] * order_items_df["Cost (Per Unit)"]).sum()

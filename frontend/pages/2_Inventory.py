@@ -10,6 +10,7 @@ sys.path.insert(0, str(project_root))
 
 from backend.db import *
 from frontend.components.charts import *
+from frontend.components.theme import inject_theme
 from frontend.state import init_state
 
 
@@ -19,6 +20,7 @@ if "refresh_token" not in st.session_state:
 st.set_page_config(page_title="Inventory", page_icon="🦭", layout="wide")
 
 def render_inventory():
+    inject_theme()
     st.header("Inventory")
     col1, col2, col3, col4 = st.columns(4)
     
@@ -26,10 +28,8 @@ def render_inventory():
     inventory_df = get_inventory_df(st.session_state["refresh_token"])
     st.dataframe(inventory_df, width="stretch", hide_index=True,
     column_config={
-        "Retail Value": st.column_config.NumberColumn(
-            "Retail Value",
-            format="%.2f"
-        )
+        "Cost Basis": st.column_config.NumberColumn("Cost Basis", format="$%.2f"),
+        "Retail Value": st.column_config.NumberColumn("Retail Value", format="$%.2f"),
     }
     )
     st.caption(f"Updated at: {dt.datetime.now()}")

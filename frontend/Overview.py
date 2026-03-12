@@ -10,6 +10,7 @@ from backend.db import *
 from components.charts import *
 from components.new_order_form import render_new_order_form
 from components.new_sale_form import render_new_sale_form
+from components.theme import inject_theme
 from state import init_state
 
 if "refresh_token" not in st.session_state:
@@ -23,6 +24,7 @@ st.set_page_config(
 )
 
 def render_overview():
+    inject_theme()
     refresh_token = st.session_state["refresh_token"]
     # Get absolute path to logo (assets folder is in frontend directory)
     frontend_dir = Path(__file__).parent
@@ -39,8 +41,18 @@ def render_overview():
     with top_mid:
         st.markdown(
             """
-            <div style="padding-top:0.3rem;">
-                <h1 style="margin-bottom:0;">Advanced Resell Analytics</h1>
+            <div style="padding-top:0.4rem;">
+                <div style="font-family:'Chakra Petch',monospace;font-size:0.6rem;font-weight:600;
+                            letter-spacing:0.35em;text-transform:uppercase;color:#5A8070;
+                            margin-bottom:0.3rem;">
+                    ◆ RESELL ANALYTICS PLATFORM
+                </div>
+                <h1 style="margin:0;font-family:'Chakra Petch',monospace;font-weight:700;
+                            font-size:2rem;letter-spacing:0.05em;text-transform:uppercase;
+                            color:#E2EDD8;">
+                    FLIPPER
+                    <span style="color:#C8FF00;">.</span>
+                </h1>
             </div>
             """,
             unsafe_allow_html=True,

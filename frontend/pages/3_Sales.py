@@ -11,6 +11,7 @@ sys.path.insert(0, str(project_root))
 from backend.db import *
 from frontend.components.charts import *
 from frontend.components.sale_details import render_sale_details
+from frontend.components.theme import inject_theme
 from frontend.state import init_state
 
 
@@ -20,23 +21,20 @@ if "refresh_token" not in st.session_state:
 st.set_page_config(page_title="Sales", page_icon="🦭", layout="wide")
 
 def render_sales():
+    inject_theme()
     st.header("Sales")
     
     sales_df = get_sales_df(st.session_state["refresh_token"])
     
-    left_col, right_col = st.columns(2)
-    with left_col:
-        col_1, col_2, col_3 = st.columns(3)
-        with col_1:
-            st.metric("Items Sold", sales_df["Number of Items"].sum())
-        with col_2:
-            total_revenue = sales_df["Revenue"].sum()
-            st.metric("Total Revenue", f"${total_revenue:,.2f}")
-        with col_3:
-            avg_sale_price = sales_df["Revenue"].mean()
-            st.metric("Average Sale Price", f"${avg_sale_price:,.2f}")
-    with right_col:
-        pass
+    col_1, col_2, col_3 = st.columns(3)
+    with col_1:
+        st.metric("Items Sold", sales_df["Number of Items"].sum())
+    with col_2:
+        total_revenue = sales_df["Revenue"].sum()
+        st.metric("Total Revenue", f"${total_revenue:,.2f}")
+    with col_3:
+        avg_sale_price = sales_df["Revenue"].mean()
+        st.metric("Average Sale Price", f"${avg_sale_price:,.2f}")
     
     # Get sales data with sale_id for selection, including cost basis from sale_items
     df = run_query_df(

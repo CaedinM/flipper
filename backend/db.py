@@ -98,26 +98,58 @@ def get_inventory_df(refresh_token: int):
             SELECT item_id, SUM(quantity) AS total_purchased
             FROM order_items
             GROUP BY item_id
-            ),
+        ),
         sold AS (
             SELECT item_id, SUM(quantity) AS total_sold
             FROM sale_items
             GROUP BY item_id
-            ),
+        ),
         returns AS (
             SELECT item_id, SUM(quantity) AS total_returned
             FROM return_items
             GROUP BY item_id
-            )
+        ),
+        order_totals AS (
+            SELECT
+                oi.order_num,
+                SUM(oi.pricetag * oi.quantity * (1 + o.tax_rate)) AS total_items_with_tax,
+                SUM(oi.quantity)                                   AS total_qty
+            FROM order_items oi
+            JOIN orders o ON o.order_num = oi.order_num
+            GROUP BY oi.order_num
+        ),
+        computed_cost AS (
+            SELECT
+                oi.item_id,
+                oi.quantity,
+                ROUND(
+                    oi.pricetag * (1 + o.tax_rate)
+                    + (o.total_cost - ot.total_items_with_tax) / NULLIF(ot.total_qty, 0)
+                    + oi.pas_fee_per_item,
+                    2
+                ) AS unit_cost_basis
+            FROM order_items oi
+            JOIN orders o ON o.order_num = oi.order_num
+            JOIN order_totals ot ON ot.order_num = oi.order_num
+        ),
+        avg_cost AS (
+            SELECT
+                item_id,
+                ROUND(SUM(quantity * unit_cost_basis) / NULLIF(SUM(quantity), 0), 2) AS avg_cost_basis
+            FROM computed_cost
+            GROUP BY item_id
+        )
         SELECT
             i.description AS "Item",
             i.category AS "Category",
+            ac.avg_cost_basis AS "Cost Basis",
             i.retail_value AS "Retail Value",
             COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0) AS "Stock"
         FROM items i
         LEFT JOIN purchased p ON p.item_id = i.item_id
         LEFT JOIN sold s ON s.item_id = i.item_id
         LEFT JOIN returns r ON r.item_id = i.item_id
+        LEFT JOIN avg_cost ac ON ac.item_id = i.item_id
         WHERE (COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0)) > 0;
         """, refresh_token)
 

@@ -6,12 +6,14 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from backend.db import get_profit_margin_by_category_df, get_profit_margin_by_platform_df, get_expense_breakdown_df
+from frontend.components.theme import inject_theme
 from frontend.state import init_state
 
 if "refresh_token" not in st.session_state:
     init_state()
 
 st.set_page_config(page_title="Insights", layout="wide")
+inject_theme()
 st.title("Insights")
 
 st.subheader("Cost Breakdown")

@@ -9,6 +9,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from frontend.state import init_state
+from frontend.components.theme import inject_theme
 from backend.db import run_query_df
 from backend.scrapers.sneaker_releases import run_release_scraper
 
@@ -16,6 +17,7 @@ if "refresh_token" not in st.session_state:
     init_state()
 
 st.set_page_config(page_title="Sneaker Calendar", layout="wide")
+inject_theme()
 st.title("Sneaker Release Calendar")
 st.caption("Upcoming sneaker releases")
 
