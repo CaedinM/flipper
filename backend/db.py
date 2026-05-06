@@ -30,20 +30,9 @@ def get_connection():
         password=os.getenv("DB_PASSWORD"),
     )
 
-# query with caching
-def run_query(sql: str, params=None) -> pd.DataFrame:
-    """Return query results as a pandas DataFrame."""
-    if params is None:
-        params = ()
-    with get_dict_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            rows = cur.fetchall()
-    return pd.DataFrame(rows)
-
-# query with no caching (Use for live updates)
+# Cached by Streamlit; pass a different refresh_token to bust the cache.
 @st.cache_data(show_spinner=False)
-def run_query_df(sql: str, refresh_token: int=0, params=None) -> pd.DataFrame:
+def run_query_df(sql: str, refresh_token: int = 0, params=None) -> pd.DataFrame:
     with get_connection() as conn:
         if params is None:
             return pd.read_sql_query(sql, conn)
@@ -80,11 +69,13 @@ def get_sales_df(refresh_token: int):
 
 def get_order_items_df(refresh_token: int):
     return run_query_df("""
-        SELECT 
+        SELECT
             o.order_date AS "Date",
-            i.category AS "Category", 
-            i.description AS "Item", 
-            oi.quantity AS "Quantity", 
+            i.category AS "Category",
+            i.era AS "Era",
+            i.set AS "Set",
+            i.product AS "Product",
+            oi.quantity AS "Quantity",
             oi.cost_basis AS "Cost (Per Unit)"
         FROM order_items oi
         JOIN items i ON oi.item_id = i.item_id
@@ -108,48 +99,19 @@ def get_inventory_df(refresh_token: int):
             SELECT item_id, SUM(quantity) AS total_returned
             FROM return_items
             GROUP BY item_id
-        ),
-        order_totals AS (
-            SELECT
-                oi.order_num,
-                SUM(oi.pricetag * oi.quantity * (1 + o.tax_rate)) AS total_items_with_tax,
-                SUM(oi.quantity)                                   AS total_qty
-            FROM order_items oi
-            JOIN orders o ON o.order_num = oi.order_num
-            GROUP BY oi.order_num
-        ),
-        computed_cost AS (
-            SELECT
-                oi.item_id,
-                oi.quantity,
-                ROUND(
-                    oi.pricetag * (1 + o.tax_rate)
-                    + (o.total_cost - ot.total_items_with_tax) / NULLIF(ot.total_qty, 0)
-                    + oi.pas_fee_per_item,
-                    2
-                ) AS unit_cost_basis
-            FROM order_items oi
-            JOIN orders o ON o.order_num = oi.order_num
-            JOIN order_totals ot ON ot.order_num = oi.order_num
-        ),
-        avg_cost AS (
-            SELECT
-                item_id,
-                ROUND(SUM(quantity * unit_cost_basis) / NULLIF(SUM(quantity), 0), 2) AS avg_cost_basis
-            FROM computed_cost
-            GROUP BY item_id
         )
         SELECT
-            i.description AS "Item",
+            i.item_id,
             i.category AS "Category",
-            ac.avg_cost_basis AS "Cost Basis",
-            i.retail_value AS "Retail Value",
+            i.era AS "Era",
+            i.set AS "Set",
+            i.product AS "Product",
+            i.avg_cost_basis AS "Cost Basis",
             COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0) AS "Stock"
         FROM items i
         LEFT JOIN purchased p ON p.item_id = i.item_id
         LEFT JOIN sold s ON s.item_id = i.item_id
         LEFT JOIN returns r ON r.item_id = i.item_id
-        LEFT JOIN avg_cost ac ON ac.item_id = i.item_id
         WHERE (COALESCE(p.total_purchased, 0) - COALESCE(s.total_sold, 0) - COALESCE(r.total_returned, 0)) > 0;
         """, refresh_token)
 
@@ -212,23 +174,6 @@ def get_monthly_items_sold_df(refresh_token: int):
         ORDER BY m.month;
         """, refresh_token)
 
-def get_sale_items_by_sale_id(sale_id: int, refresh_token: int) -> pd.DataFrame:
-    """
-    Get all items for a specific sale.
-    Returns a DataFrame with item details and quantities.
-    """
-    return run_query_df("""
-        SELECT 
-            si.quantity,
-            i.item_id,
-            i.description AS item_description,
-            i.category
-        FROM sale_items si
-        JOIN items i ON si.item_id = i.item_id
-        WHERE si.sale_id = %s
-        ORDER BY i.description
-        """, refresh_token, params=(sale_id,))
-
 def get_total_profit_df(refresh_token: int):
     return run_query_df("""
         WITH sale_profit AS (
@@ -289,24 +234,24 @@ def insert_order_with_items(order_data: dict, items_rows: list[dict]):
                         order_data["tax_rate"]
                     ),
                 )
-                # Compute cost_basis per item from total_cost (the actual amount paid),
-                # allocated proportionally by pricetag so the sum equals total_cost.
+                # WAC: pricetag + even shipping share + weighted tax remainder + pas_fee
                 total_pricetag_value = sum(r["pricetag"] * r["quantity"] for r in items_rows)
                 total_qty = sum(r["quantity"] for r in items_rows)
+                shipping_cost = order_data["shipping_cost"]
+                tax_remainder = order_data["total_cost"] - shipping_cost - total_pricetag_value
                 values = []
                 for r in items_rows:
                     if total_pricetag_value > 0:
-                        cost_basis = round(
-                            order_data["total_cost"] * r["pricetag"] / total_pricetag_value
-                            + r["pas_fee_per_item"],
-                            2,
-                        )
+                        weighted_tax = (r["pricetag"] / total_pricetag_value) * tax_remainder
                     else:
-                        # Fallback: equal allocation when all pricetags are zero
-                        cost_basis = round(
-                            order_data["total_cost"] / total_qty + r["pas_fee_per_item"],
-                            2,
-                        )
+                        weighted_tax = tax_remainder / total_qty if total_qty > 0 else 0
+                    cost_basis = round(
+                        r["pricetag"]
+                        + shipping_cost / total_qty
+                        + weighted_tax
+                        + r["pas_fee_per_item"],
+                        2,
+                    )
                     values.append((
                         order_data["order_num"],
                         r["item_id"],
@@ -325,17 +270,15 @@ def insert_order_with_items(order_data: dict, items_rows: list[dict]):
                     values,
                 )
 
-                # commits automatically when exiting "with get_conn() as conn:" if no exception
 
 def insert_sale_with_items(sale_data: dict, items_rows: list[dict]):
     """
-    sale_data: dict for sales table (sale_date, platform, sale_revenue)
-    items_rows: list of dicts for sale_items table rows (item_id, quantity)
-    unit_cost_basis_at_sale is automatically fetched from items.avg_cost_basis
+    sale_data: dict with sale_date, platform, sale_revenue.
+    items_rows: list of dicts with item_id and quantity.
+    unit_cost_basis_at_sale is snapshotted from items.avg_cost_basis at sale time.
     """
     with get_dict_connection() as conn:
         with conn.cursor() as cur:
-            # insert into sales and get the sale_id
             cur.execute(
                 """
                 INSERT INTO sales (sale_date, platform, sale_revenue)
@@ -349,8 +292,7 @@ def insert_sale_with_items(sale_data: dict, items_rows: list[dict]):
                 ),
             )
             sale_id = cur.fetchone()["sale_id"]
-            
-            # Get avg_cost_basis for each item from the items table
+
             item_ids = [r["item_id"] for r in items_rows]
             if item_ids:
                 # Use tuple for IN clause
@@ -366,14 +308,13 @@ def insert_sale_with_items(sale_data: dict, items_rows: list[dict]):
                 cost_basis_map = {row["item_id"]: row["avg_cost_basis"] for row in cur.fetchall()}
             else:
                 cost_basis_map = {}
-            
-            # insert into sale_items with cost basis from items table
+
             values = [
                 (
                     sale_id,
                     r["item_id"],
                     r["quantity"],
-                    cost_basis_map.get(r["item_id"], 0)  # Use avg_cost_basis from items table
+                    cost_basis_map.get(r["item_id"], 0)
                 )
                 for r in items_rows
             ]
@@ -387,35 +328,33 @@ def insert_sale_with_items(sale_data: dict, items_rows: list[dict]):
                 values,
             )
 
-            # commits automatically when exiting "with get_conn() as conn:" if no exception
-
-def upsert_item(description: str, category: str | None = None) -> int:
+def upsert_item(category: str | None = None, era: str | None = None, set: str | None = None, product: str | None = None) -> int:
     """
-    Insert a new item or get existing item_id.
-    Returns the item_id.
+    Insert a new item or return the existing item_id for the given (era, set, product).
     """
-    description = (description or "").strip()
-    if not description:
-        raise ValueError("Item description cannot be empty.")
-    
     with get_dict_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO items (description, category)
-                VALUES (%s, COALESCE(%s, ''))
-                ON CONFLICT (description)
-                DO UPDATE SET
-                    category = CASE
-                        WHEN items.category = '' AND EXCLUDED.category <> '' THEN EXCLUDED.category
-                        ELSE items.category
-                    END
-                RETURNING item_id;
+                SELECT item_id FROM items
+                WHERE era IS NOT DISTINCT FROM %s
+                  AND set IS NOT DISTINCT FROM %s
+                  AND product IS NOT DISTINCT FROM %s
                 """,
-                (description, category or "")
+                (era, set, product)
             )
             result = cur.fetchone()
-            return result["item_id"]
+            if result:
+                return result["item_id"]
+            cur.execute(
+                """
+                INSERT INTO items (category, era, set, product)
+                VALUES (%s, %s, %s, %s)
+                RETURNING item_id
+                """,
+                (category or "", era, set, product)
+            )
+            return cur.fetchone()["item_id"]
 
 def get_order_items_by_order_num(order_num: str, refresh_token: int) -> pd.DataFrame:
     """
@@ -424,10 +363,12 @@ def get_order_items_by_order_num(order_num: str, refresh_token: int) -> pd.DataF
     """
     return run_query_df(
         """
-        SELECT 
+        SELECT
             oi.order_item_id,
             oi.item_id,
-            i.description AS "Item Description",
+            i.era AS "Era",
+            i.set AS "Set",
+            i.product AS "Product",
             i.category AS "Category",
             oi.quantity AS "Quantity",
             oi.pricetag AS "Price Tag",
@@ -436,7 +377,7 @@ def get_order_items_by_order_num(order_num: str, refresh_token: int) -> pd.DataF
         FROM order_items oi
         JOIN items i ON oi.item_id = i.item_id
         WHERE oi.order_num = %s
-        ORDER BY i.description
+        ORDER BY i.set, i.product
         """,
         refresh_token,
         (order_num,)
@@ -465,7 +406,6 @@ def update_pas_fees_for_order(order_num: str, pas_fee_updates: list[dict]):
                         order_num
                     )
                 )
-            # commits automatically when exiting "with get_conn() as conn:" if no exception
 
 def get_inventory_count_df(refresh_token: int):
     """Returns count of unsold items in inventory."""
@@ -573,6 +513,73 @@ def get_profit_margin_by_category_df(refresh_token: int):
         ORDER BY profit_margin DESC NULLS LAST;
         """, refresh_token)
 
+def get_cost_basis_vs_profit_df(refresh_token: int):
+    """Returns avg cost basis and avg profit per unit for every sold item, for scatter plot."""
+    return run_query_df("""
+        WITH per_sale_qty AS (
+            SELECT sale_id, SUM(quantity) AS total_qty
+            FROM sale_items
+            GROUP BY sale_id
+        ),
+        item_sales AS (
+            SELECT
+                i.item_id,
+                COALESCE(i.set, '') || ' – ' || COALESCE(i.product, i.category) AS item_label,
+                i.era,
+                i.category,
+                si.unit_cost_basis_at_sale                          AS cost_basis,
+                s.sale_revenue * si.quantity / psq.total_qty        AS allocated_revenue,
+                si.quantity
+            FROM sale_items si
+            JOIN items  i   ON si.item_id  = i.item_id
+            JOIN sales  s   ON si.sale_id  = s.sale_id
+            JOIN per_sale_qty psq ON psq.sale_id = si.sale_id
+            WHERE i.category = 'Pokemon'
+        )
+        SELECT
+            item_label,
+            era,
+            ROUND(AVG(cost_basis), 2)                                            AS avg_cost_basis,
+            ROUND(
+                SUM(allocated_revenue - quantity * cost_basis)
+                / NULLIF(SUM(quantity), 0), 2
+            )                                                                    AS avg_profit_per_unit,
+            SUM(quantity)::int                                                   AS units_sold
+        FROM item_sales
+        GROUP BY item_label, era, category
+        ORDER BY avg_cost_basis;
+    """, refresh_token)
+
+def get_pokemon_profit_by_set_df(refresh_token: int):
+    """Returns total profit and ROI per Pokemon set, only for sets that have been sold."""
+    return run_query_df("""
+        WITH per_sale_qty AS (
+            SELECT sale_id, SUM(quantity) AS total_qty
+            FROM sale_items
+            GROUP BY sale_id
+        ),
+        item_revenue AS (
+            SELECT
+                i.set,
+                s.sale_revenue * si.quantity / psq.total_qty AS allocated_revenue,
+                si.quantity * si.unit_cost_basis_at_sale       AS cost
+            FROM sale_items si
+            JOIN items i  ON si.item_id  = i.item_id
+            JOIN sales s  ON si.sale_id  = s.sale_id
+            JOIN per_sale_qty psq ON psq.sale_id = si.sale_id
+            WHERE i.category = 'Pokemon' AND i.set IS NOT NULL
+        )
+        SELECT
+            set                                                                    AS "Set",
+            ROUND(SUM(allocated_revenue), 2)                                       AS "Revenue",
+            ROUND(SUM(cost), 2)                                                    AS "Cost Basis",
+            ROUND(SUM(allocated_revenue - cost), 2)                                AS "Profit",
+            ROUND(SUM(allocated_revenue - cost) / NULLIF(SUM(cost), 0) * 100, 1)  AS "ROI (%)"
+        FROM item_revenue
+        GROUP BY set
+        ORDER BY "Profit" DESC NULLS LAST;
+    """, refresh_token)
+
 def get_avg_profit_margin_df(refresh_token: int):
     """Returns overall profit margin as a percentage: total profit / total revenue * 100."""
     return run_query_df("""
@@ -616,6 +623,125 @@ def get_sales_velocity_df(refresh_token: int):
         WHERE s.sale_date >= CURRENT_DATE - INTERVAL '28 days'
         """, refresh_token)
 
+def get_current_month_items_purchased_df(refresh_token: int):
+    return run_query_df("""
+        SELECT COALESCE(SUM(oi.quantity), 0) AS items_purchased
+        FROM order_items oi
+        JOIN orders o ON o.order_num = oi.order_num
+        WHERE o.order_date >= date_trunc('month', CURRENT_DATE)
+        AND o.order_date < date_trunc('month', CURRENT_DATE) + interval '1 month'
+    """, refresh_token)
+
+
+def insert_expense(expense_date, description: str, expense_cost: float):
+    """Insert a new row into other_expenses."""
+    with get_dict_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO other_expenses (expense_date, description, expense_cost)
+                VALUES (%s, %s, %s)
+                """,
+                (expense_date, description.strip(), expense_cost),
+            )
+
+
+def recalculate_all_cost_basis():
+    """
+    One-time migration that rewrites cost data across all three tables
+    using the canonical WAC formula:
+
+      order_items.cost_basis  = pricetag
+                               + shipping_cost / total_qty_in_order
+                               + (pricetag / sum_pricetags) * tax_remainder
+                               + pas_fee_per_item
+
+      items.avg_cost_basis    = WAC over all purchases (all time)
+
+      sale_items.unit_cost_basis_at_sale
+                              = WAC of purchases on or before the sale date
+                                (temporal WAC — only what was known at sale time)
+    """
+    with get_dict_connection() as conn:
+        with conn.cursor() as cur:
+
+            # ── Step 1: recalculate order_items.cost_basis ────────────────────
+            cur.execute("""
+                WITH order_totals AS (
+                    SELECT
+                        oi.order_num,
+                        SUM(oi.pricetag * oi.quantity) AS sum_pricetags,
+                        SUM(oi.quantity)               AS total_qty,
+                        o.total_cost,
+                        o.shipping_cost
+                    FROM order_items oi
+                    JOIN orders o ON o.order_num = oi.order_num
+                    GROUP BY oi.order_num, o.total_cost, o.shipping_cost
+                ),
+                new_costs AS (
+                    SELECT
+                        oi.order_item_id,
+                        ROUND(
+                            oi.pricetag
+                            + ot.shipping_cost / NULLIF(ot.total_qty, 0)
+                            + (oi.pricetag / NULLIF(ot.sum_pricetags, 0))
+                              * (ot.total_cost - ot.shipping_cost - ot.sum_pricetags)
+                            + oi.pas_fee_per_item,
+                            2
+                        ) AS new_cost_basis
+                    FROM order_items oi
+                    JOIN order_totals ot ON ot.order_num = oi.order_num
+                )
+                UPDATE order_items
+                SET cost_basis = new_costs.new_cost_basis
+                FROM new_costs
+                WHERE order_items.order_item_id = new_costs.order_item_id;
+            """)
+
+            # ── Step 2: recalculate items.avg_cost_basis (WAC, all time) ─────
+            # The trigger on order_items also does this, but we update explicitly
+            # here to guarantee consistency after the bulk step 1 above.
+            cur.execute("""
+                UPDATE items
+                SET avg_cost_basis = subq.wac
+                FROM (
+                    SELECT
+                        item_id,
+                        ROUND(
+                            SUM(quantity * cost_basis) / NULLIF(SUM(quantity), 0),
+                            2
+                        ) AS wac
+                    FROM order_items
+                    GROUP BY item_id
+                ) subq
+                WHERE items.item_id = subq.item_id;
+            """)
+
+            # ── Step 3: recalculate sale_items.unit_cost_basis_at_sale ───────
+            # Use temporal WAC: only purchases on or before each sale's date
+            # are included so the snapshot reflects what was actually known then.
+            cur.execute("""
+                UPDATE sale_items si
+                SET unit_cost_basis_at_sale = subq.wac_at_sale
+                FROM (
+                    SELECT
+                        si2.sale_item_id,
+                        ROUND(
+                            SUM(oi.quantity * oi.cost_basis)
+                                / NULLIF(SUM(oi.quantity), 0),
+                            2
+                        ) AS wac_at_sale
+                    FROM sale_items si2
+                    JOIN sales s  ON s.sale_id   = si2.sale_id
+                    JOIN order_items oi ON oi.item_id = si2.item_id
+                    JOIN orders o  ON o.order_num = oi.order_num
+                    WHERE o.order_date <= s.sale_date
+                    GROUP BY si2.sale_item_id
+                ) subq
+                WHERE si.sale_item_id = subq.sale_item_id;
+            """)
+
+
 def create_calculate_cost_basis_trigger():
     """
     Re-apply the calculate_order_item_cost_basis trigger.
@@ -626,37 +752,45 @@ def create_calculate_cost_basis_trigger():
     CREATE OR REPLACE FUNCTION calculate_order_item_cost_basis()
     RETURNS TRIGGER AS $$
     DECLARE
-        order_tax_rate NUMERIC(5,4);
+        order_total_cost    NUMERIC(12,2);
         order_shipping_cost NUMERIC(10,2);
-        num_items_in_order INT;
-        calculated_cost_basis NUMERIC(12,2);
+        sum_pricetags       NUMERIC(12,2);
+        total_qty           INT;
+        tax_remainder       NUMERIC(12,2);
     BEGIN
-        -- On INSERT, if cost_basis was already provided by the application, use it directly.
-        IF TG_OP = 'INSERT' AND NEW.cost_basis IS NOT NULL THEN
+        -- INSERT: application always supplies cost_basis; use it as-is.
+        IF TG_OP = 'INSERT' THEN
             RETURN NEW;
         END IF;
 
-        SELECT o.tax_rate, o.shipping_cost,
-               (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_num = COALESCE(NEW.order_num, OLD.order_num))
-               + CASE WHEN TG_OP = 'INSERT' THEN NEW.quantity ELSE 0 END
-               - CASE WHEN TG_OP = 'UPDATE' AND OLD.order_num = NEW.order_num THEN OLD.quantity ELSE 0 END
-        INTO order_tax_rate, order_shipping_cost, num_items_in_order
+        -- UPDATE: recalculate using the canonical formula.
+        -- Aggregate over the order, replacing the OLD row's contribution with NEW values.
+        SELECT
+            o.total_cost,
+            o.shipping_cost,
+            COALESCE(SUM(oi.pricetag * oi.quantity), 0)
+                - OLD.pricetag * OLD.quantity
+                + NEW.pricetag * NEW.quantity,
+            COALESCE(SUM(oi.quantity), 0)
+                - OLD.quantity
+                + NEW.quantity
+        INTO order_total_cost, order_shipping_cost, sum_pricetags, total_qty
         FROM orders o
-        WHERE o.order_num = COALESCE(NEW.order_num, OLD.order_num);
+        LEFT JOIN order_items oi ON oi.order_num = NEW.order_num
+        WHERE o.order_num = NEW.order_num
+        GROUP BY o.total_cost, o.shipping_cost;
 
-        calculated_cost_basis := ROUND(
-            COALESCE(NEW.pricetag, OLD.pricetag) * (1 + order_tax_rate)
-            + COALESCE(NEW.pas_fee_per_item, OLD.pas_fee_per_item)
-            + (order_shipping_cost / NULLIF(num_items_in_order, 0)),
+        tax_remainder := order_total_cost - order_shipping_cost - sum_pricetags;
+
+        NEW.cost_basis := ROUND(
+            NEW.pricetag
+            + order_shipping_cost / NULLIF(total_qty, 0)
+            + (NEW.pricetag / NULLIF(sum_pricetags, 0)) * tax_remainder
+            + NEW.pas_fee_per_item,
             2
         );
 
-        IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
-            NEW.cost_basis := calculated_cost_basis;
-            RETURN NEW;
-        ELSE
-            RETURN OLD;
-        END IF;
+        RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
     """
@@ -671,62 +805,4 @@ def create_calculate_cost_basis_trigger():
         with conn.cursor() as cur:
             cur.execute(trigger_function_sql)
             cur.execute(trigger_sql)
-
-
-def create_update_avg_cost_basis_trigger():
-    """
-    Create or replace the trigger function and trigger that automatically updates
-    avg_cost_basis in the items table when order_items are inserted, updated, or deleted.
-    """
-    trigger_function_sql = """
-    CREATE OR REPLACE FUNCTION update_item_avg_cost_basis()
-    RETURNS TRIGGER AS $$
-    DECLARE
-        affected_item_id INT;
-    BEGIN
-        -- Determine which item_id was affected
-        IF TG_OP = 'DELETE' THEN
-            affected_item_id := OLD.item_id;
-        ELSE
-            affected_item_id := NEW.item_id;
-        END IF;
-        
-        -- Update avg_cost_basis for only the affected item using precalculated cost_basis
-        WITH item_avg_cost AS (
-            SELECT
-                ROUND(
-                    SUM(quantity * cost_basis) / NULLIF(SUM(quantity), 0),
-                    2
-                ) AS avg_cost_basis
-            FROM order_items
-            WHERE item_id = affected_item_id
-            AND cost_basis IS NOT NULL
-        )
-        -- Update avg_cost_basis (will be NULL if item has no order_items)
-        UPDATE items
-        SET avg_cost_basis = (
-            SELECT avg_cost_basis FROM item_avg_cost
-        )
-        WHERE item_id = affected_item_id;
-        
-        RETURN COALESCE(NEW, OLD);
-    END;
-    $$ LANGUAGE plpgsql;
-    """
-    
-    trigger_sql = """
-    DROP TRIGGER IF EXISTS trigger_update_item_avg_cost_basis ON order_items;
-    CREATE TRIGGER trigger_update_item_avg_cost_basis
-        AFTER INSERT OR UPDATE OR DELETE ON order_items
-        FOR EACH ROW
-        EXECUTE FUNCTION update_item_avg_cost_basis();
-    """
-    
-    with get_dict_connection() as conn:
-        with conn.cursor() as cur:
-            # Create the function
-            cur.execute(trigger_function_sql)
-            # Create the trigger
-            cur.execute(trigger_sql)
-            # commits automatically when exiting "with get_conn() as conn:" if no exception
 

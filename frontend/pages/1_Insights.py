@@ -5,7 +5,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from backend.db import get_profit_margin_by_category_df, get_profit_margin_by_platform_df, get_expense_breakdown_df
+from backend.db import get_profit_margin_by_category_df, get_profit_margin_by_platform_df, get_expense_breakdown_df, get_pokemon_profit_by_set_df
+from frontend.components.charts import get_cost_basis_vs_profit_chart
 from frontend.components.theme import inject_theme
 from frontend.state import init_state
 
@@ -33,6 +34,7 @@ if not exp.empty:
     col4.metric("Total Lost",       f"${total_lost:,.2f}")
 
 st.divider()
+st.header("Overall")
 
 col_left, col_right = st.columns(2)
 
@@ -85,3 +87,34 @@ with col_right:
                 "Total Revenue": st.column_config.NumberColumn("Total Revenue", format="$%.2f"),
             },
         )
+
+st.divider()
+st.header("Pokemon")
+st.subheader("Highest ROI by Set")
+
+pokemon_set_df = get_pokemon_profit_by_set_df(st.session_state["refresh_token"])
+
+if pokemon_set_df.empty:
+    st.info("No Pokemon sales data yet.")
+else:
+    st.dataframe(
+        pokemon_set_df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Revenue":    st.column_config.NumberColumn("Revenue",    format="$%.2f"),
+            "Cost Basis": st.column_config.NumberColumn("Cost Basis", format="$%.2f"),
+            "Profit":     st.column_config.NumberColumn("Profit",     format="$%.2f"),
+            "ROI (%)":    st.column_config.NumberColumn("ROI (%)",    format="%.1f%%"),
+        },
+    )
+
+st.divider()
+st.subheader("Cost Basis vs. Profit per Unit")
+st.caption("Each point is a sold product. Size = units sold. Hover for details.")
+
+chart = get_cost_basis_vs_profit_chart(st.session_state["refresh_token"])
+if chart:
+    st.altair_chart(chart, use_container_width=True)
+else:
+    st.info("No sales data yet.")

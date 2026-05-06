@@ -71,26 +71,27 @@ def render_add_pas_fee_form():
         st.divider()
         st.subheader(f"Order: {st.session_state.selected_order_num_pas}")
         
-        # Prepare dataframe for editing
+        order_items_df["Description"] = order_items_df["Set"].fillna("") + " – " + order_items_df["Product"].fillna("")
         edit_df = order_items_df[[
-            "Item Description",
+            "Description",
+            "Era",
             "Category",
             "Quantity",
             "Price Tag",
             "PAS Fee Per Item",
             "Cost Basis"
         ]].copy()
-        
+
         with st.form("add_pas_fee_form", clear_on_submit=False):
-        
-            # Display order items with editable PAS fees
+
             edited_df = st.data_editor(
                 edit_df,
                 width="stretch",
                 hide_index=True,
-                disabled=["Item Description", "Category", "Quantity", "Price Tag", "Cost Basis"],
+                disabled=["Description", "Era", "Category", "Quantity", "Price Tag", "Cost Basis"],
                 column_config={
-                    "Item Description": st.column_config.TextColumn("Item Description"),
+                    "Description": st.column_config.TextColumn("Description"),
+                    "Era": st.column_config.TextColumn("Era"),
                     "Category": st.column_config.TextColumn("Category"),
                     "Quantity": st.column_config.NumberColumn("Quantity", format="%d"),
                     "Price Tag": st.column_config.NumberColumn("Price Tag", format="$%.2f"),
@@ -129,20 +130,13 @@ def render_add_pas_fee_form():
                     return False
                 
                 try:
-                    # Merge edited PAS fees back with order_item_ids
-                    merged_df = edited_df.merge(
-                        order_items_df[["Item Description", "order_item_id"]],
-                        on="Item Description",
-                        how="left"
-                    )
-                    
-                    # Prepare update data
+                    order_item_ids = order_items_df["order_item_id"].tolist()
                     pas_fee_updates = [
                         {
-                            "order_item_id": int(row["order_item_id"]),
+                            "order_item_id": int(order_item_ids[i]),
                             "pas_fee_per_item": float(row["PAS Fee Per Item"])
                         }
-                        for _, row in merged_df.iterrows()
+                        for i, (_, row) in enumerate(edited_df.iterrows())
                     ]
                     
                     # Update database
@@ -159,12 +153,10 @@ def render_add_pas_fee_form():
                 
                 except psycopg2.errors.DatabaseError as e:
                     st.error(f"Database error: {e}")
-                    import traceback
                     st.exception(e)
                     return False
                 except Exception as e:
                     st.error(f"Failed to update PAS fees: {e}")
-                    import traceback
                     st.exception(e)
                     return False
     else:

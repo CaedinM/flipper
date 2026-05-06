@@ -5,188 +5,166 @@ import psycopg2
 import sys
 from pathlib import Path
 
-# Add project root to path for backend imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from backend.db import run_query_df, insert_order_with_items, upsert_item
+from backend.db import run_query_df, insert_order_with_items
 from .utils import sanitize_order_num
 
+ERA_OPTIONS = ["Mega Evolution", "Scarlet & Violet"]
+
 def render_new_order_form():
-    # Load item options with their categories
-    items_df = run_query_df("""
-        SELECT item_id, description, category
-        FROM items
-        ORDER BY description
-    """)
-    item_options = items_df["description"].tolist()
-    description_to_id = dict(zip(items_df["description"], items_df["item_id"]))
-    
-    # Load existing categories from database
-    categories_df = run_query_df("""
-        SELECT DISTINCT category
-        FROM items
-        WHERE category IS NOT NULL AND category != ''
-        ORDER BY category
-    """)
-    existing_categories = categories_df["category"].tolist() if not categories_df.empty else []
-    # Add "Other" option for new categories
-    category_options = existing_categories + ["Other"] if existing_categories else ["Other"]
+    if "order_line_items" not in st.session_state:
+        st.session_state.order_line_items = []
 
-    if "line_items_df" not in st.session_state:
-        st.session_state.line_items_df = pd.DataFrame(
-            [{"description": None, "category": None, "quantity": 1, "pricetag": 0.0, "pas_fee_per_item": 0.0}]
-        )
-
-    with st.form("new_order_form", clear_on_submit=False): # Remove enter to submit when streamlit is upgraded
-        st.subheader("Order Info")
-
-        raw_order_num = st.text_input("Order #", placeholder="e.g., AMZ-12345")
-        order_num = sanitize_order_num(raw_order_num)
-
-        order_date = st.date_input("Order date", value=date.today())
-
+    # ── Order Info ────────────────────────────────────────────────────────────
+    st.subheader("Order Info")
+    col1, col2 = st.columns(2)
+    with col1:
+        raw_order_num = st.text_input("Order #", placeholder="e.g., AMZ-12345", key="order_num_input")
+        order_date = st.date_input("Order Date", value=date.today(), key="order_date_input")
         seller = st.selectbox(
-            label="Platform / Retailer",
-            options=["Target", "Walmart", "Pokemon Center", "Best Buy", "DICK's Sporting Goods", "LEGO Shop", "Other"]
+            "Platform / Retailer",
+            options=["Target", "Walmart", "Pokemon Center", "Best Buy", "DICK's Sporting Goods", "LEGO Shop", "Other"],
+            key="order_seller_input",
         )
-
+    with col2:
         total_cost = st.number_input(
-            label="Total cost",
-            min_value=0.0,
-            max_value=99999999.99,
-            step=0.01,
-            label_visibility="visible",
-            help="The total paid to the retailer including shipping and taxes. Do not include PAS_fees or any other additional expenses."
+            "Total Cost", min_value=0.0, max_value=99999999.99, step=0.01,
+            help="Total paid including shipping and taxes. Exclude PAS fees.",
+            key="order_total_input",
         )
-
         shipping_cost = st.number_input(
-            label="Shipping Cost",
-            min_value=0.0,
-            max_value=99999999.99,
-            step=0.01
+            "Shipping Cost", min_value=0.0, max_value=99999999.99, step=0.01,
+            key="order_shipping_input",
         )
 
-        st.subheader("Items")
+    st.divider()
 
-        edited_df = st.data_editor(
-            st.session_state.line_items_df,
-            num_rows="dynamic",
-            width="stretch",
-            column_config={
-                "description": st.column_config.TextColumn(
-                    "Item (description)",
-                    help="Type to add a new item, or select from previously ordered items.",
-                    required=True,
-                ),
-                "category": st.column_config.SelectboxColumn(
-                    "Category",
-                    options=category_options,
-                    help="Select category for new items. Required for new items.",
-                    required=False,
-                    ),
-                "quantity": st.column_config.NumberColumn("Quantity", min_value=1, step=1),
-                "pricetag": st.column_config.NumberColumn("Price Tag", min_value=0.00, step=0.01),
-                "pas_fee_per_item": st.column_config.NumberColumn("PAS Fee (Per Item)", min_value=0.00, step=0.01),
-            }
-        )
-        col_cancel, col_save = st.columns(2)
-        with col_cancel:
-            cancelled = st.form_submit_button("Cancel", type="primary", width="stretch")
-        with col_save:
-            submitted = st.form_submit_button("Save Order", type="primary", width="stretch")
+    # ── Item Selector ─────────────────────────────────────────────────────────
+    st.subheader("Add Items")
 
-    st.session_state.line_items_df = edited_df
+    sel1, sel2, sel3 = st.columns(3)
+    with sel1:
+        selected_era = st.selectbox("Era", ERA_OPTIONS, key="order_era_select")
 
-    if cancelled:
-        st.session_state.show_new_order = False
-        st.rerun()
+    sets_df = run_query_df(
+        "SELECT DISTINCT set FROM items WHERE era = %s AND set IS NOT NULL ORDER BY set",
+        0, (selected_era,)
+    )
+    set_options = sets_df["set"].tolist() if not sets_df.empty else []
 
-    if submitted:
-        # Normalize columns — data_editor can return lists in some edge cases
-        edited_df = edited_df.copy()
-        def _unwrap(x):
-            return x[0] if isinstance(x, list) and x else (None if isinstance(x, list) else x)
-        edited_df["description"] = edited_df["description"].apply(_unwrap)
-        edited_df["category"] = edited_df["category"].apply(_unwrap)
-        errors = []
-        if not order_num.strip():
-            errors.append("Order # is required.")
-        if edited_df.empty:
-            errors.append("Add at least one item to save order.")
-        if (edited_df["quantity"] <= 0).any():
-            errors.append("Quantities must be >= 1.")
-        if (edited_df["description"].isna()).any():
-            errors.append("Please enter an item description for every row.")
-        
-        # Check if new items have categories (allow "Other" which means no category)
-        for idx, row in edited_df.iterrows():
-            desc = row["description"]
-            if pd.notna(desc) and desc.strip():
-                desc = desc.strip()
-                # If it's a new item (not in existing items), require category selection
-                if desc not in description_to_id:
-                    category = row.get("category")
-                    if pd.isna(category) or not str(category).strip():
-                        errors.append(f"Category is required for new item: '{desc}'. Please select a category (or 'Other' for no category).")
+    with sel2:
+        # Key includes era so the widget resets when era changes
+        selected_set = st.selectbox("Set", set_options, key=f"order_set_select_{selected_era}")
 
-        if errors:
-            for e in errors:
-                st.error(e)
-            return False
+    products_df = run_query_df(
+        "SELECT item_id, product FROM items WHERE era = %s AND set = %s AND product IS NOT NULL ORDER BY product",
+        0, (selected_era, selected_set),
+    ) if selected_set else pd.DataFrame(columns=["item_id", "product"])
+    product_options = products_df["product"].tolist()
+    product_to_id = dict(zip(products_df["product"], products_df["item_id"]))
 
-        try:
-            items_to_insert = edited_df.copy()
-            
-            # Get or create item_ids for all descriptions
-            # Handle both existing items and new items
-            item_ids = []
-            for idx, row in items_to_insert.iterrows():
-                desc = row["description"]
-                if pd.isna(desc) or not desc.strip():
-                    raise ValueError("Item description cannot be empty.")
-                
-                desc = desc.strip()
-                # Check if item exists
-                if desc in description_to_id:
-                    item_ids.append(description_to_id[desc])
-                else:
-                    # Get category for new item
-                    category = row.get("category")
-                    if pd.isna(category) or not str(category).strip() or str(category).strip() == "Other":
-                        # If "Other" is selected or category is missing, use empty string
-                        category_value = ""
-                    else:
-                        category_value = str(category).strip()
-                    
-                    # Create new item with category
-                    new_item_id = upsert_item(description=desc, category=category_value if category_value else None)
-                    item_ids.append(new_item_id)
-                    # Update the mapping for potential duplicates in this order
-                    description_to_id[desc] = new_item_id
-            
-            items_to_insert["item_id"] = item_ids
-            
-            insert_order_with_items(
-                order_data={
-                    "order_num": order_num.strip(),
-                    "order_date": order_date,
-                    "seller": seller,
-                    "total_cost": total_cost,
-                    "shipping_cost": shipping_cost,
-                    "tax_rate": 0.0975 # HARD CODED TAX RATE FOR CALIFORNIA, IN FUTURE, LET USER SET LOCATION AND USE DICTIONARY TO SET TAX RATE
-                },
-                items_rows=items_to_insert[["item_id", "quantity", "pricetag", "pas_fee_per_item"]].to_dict(orient="records")
+    with sel3:
+        # Key includes era+set so the widget resets when set changes
+        selected_product = st.selectbox("Product", product_options, key=f"order_product_select_{selected_era}_{selected_set}")
+
+    qty_col, price_col, pas_col, btn_col = st.columns([1, 1, 1, 1])
+    with qty_col:
+        item_qty = st.number_input("Quantity", min_value=1, step=1, value=1, key="order_item_qty")
+    with price_col:
+        item_price = st.number_input("Price Tag ($)", min_value=0.0, step=0.01, value=0.0, key="order_item_price")
+    with pas_col:
+        item_pas = st.number_input("PAS Fee / Item ($)", min_value=0.0, step=0.01, value=0.0, key="order_item_pas")
+    with btn_col:
+        st.write("")
+        st.write("")
+        if st.button("＋ Add Item", use_container_width=True, key="add_item_btn"):
+            if not selected_product:
+                st.error("Select a product before adding.")
+            else:
+                st.session_state.order_line_items.append({
+                    "item_id": int(product_to_id[selected_product]),
+                    "era": selected_era,
+                    "set": selected_set,
+                    "product": selected_product,
+                    "quantity": int(item_qty),
+                    "pricetag": float(item_price),
+                    "pas_fee_per_item": float(item_pas),
+                })
+                st.rerun()
+
+    # ── Line Items List ───────────────────────────────────────────────────────
+    if st.session_state.order_line_items:
+        st.divider()
+        st.subheader("Order Items")
+
+        header = st.columns([2, 2, 3, 1, 1, 1, 0.4])
+        for col, label in zip(header, ["Era", "Set", "Product", "Qty", "Price", "PAS", ""]):
+            col.markdown(f"**{label}**")
+
+        to_remove = None
+        for i, item in enumerate(st.session_state.order_line_items):
+            cols = st.columns([2, 2, 3, 1, 1, 1, 0.4])
+            cols[0].write(item["era"])
+            cols[1].write(item["set"])
+            cols[2].write(item["product"])
+            cols[3].write(str(item["quantity"]))
+            cols[4].write(f"${item['pricetag']:.2f}")
+            cols[5].write(f"${item['pas_fee_per_item']:.2f}")
+            if cols[6].button("✕", key=f"remove_item_{i}"):
+                to_remove = i
+
+        if to_remove is not None:
+            st.session_state.order_line_items.pop(to_remove)
+            st.rerun()
+
+    # ── Actions ───────────────────────────────────────────────────────────────
+    st.divider()
+    col_cancel, col_save = st.columns(2)
+    with col_cancel:
+        if st.button("Cancel", use_container_width=True, key="order_cancel_btn"):
+            st.session_state.order_line_items = []
+            st.session_state.show_new_order = False
+            st.rerun()
+    with col_save:
+        if st.button("Save Order", type="primary", use_container_width=True, key="order_save_btn"):
+            order_num = sanitize_order_num(raw_order_num)
+            errors = []
+            if not order_num.strip():
+                errors.append("Order # is required.")
+            if not st.session_state.order_line_items:
+                errors.append("Add at least one item.")
+            if errors:
+                for e in errors:
+                    st.error(e)
+                return False
+            try:
+                insert_order_with_items(
+                    order_data={
+                        "order_num": order_num.strip(),
+                        "order_date": order_date,
+                        "seller": seller,
+                        "total_cost": total_cost,
+                        "shipping_cost": shipping_cost,
+                        "tax_rate": 0.0975,
+                    },
+                    items_rows=[
+                        {
+                            "item_id": r["item_id"],
+                            "quantity": r["quantity"],
+                            "pricetag": r["pricetag"],
+                            "pas_fee_per_item": r["pas_fee_per_item"],
+                        }
+                        for r in st.session_state.order_line_items
+                    ],
                 )
-            
-            st.success(f"Saved order {order_num} with {len(edited_df)} item(s).")
-            st.session_state.line_items_df = pd.DataFrame(
-                [{"description": None, "category": None, "quantity": 1, "pricetag": 0.0, "pas_fee_per_item": 0.0}]
-            )
-            return True
-        
-        except psycopg2.errors.UniqueViolation:
-            st.error("That Order # already exists.")
-            return False
-        except Exception as e:
-            st.error(f"Failed to save order: {e}")
-            return False
+                st.session_state.order_line_items = []
+                return True
+            except psycopg2.errors.UniqueViolation:
+                st.error("That Order # already exists.")
+                return False
+            except Exception as e:
+                st.error(f"Failed to save order: {e}")
+                return False
+
+    return False

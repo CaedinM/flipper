@@ -26,7 +26,7 @@ def render_sales():
     
     sales_df = get_sales_df(st.session_state["refresh_token"])
     
-    col_1, col_2, col_3 = st.columns(3)
+    col_1, col_2, col_3, col_4 = st.columns(4)
     with col_1:
         st.metric("Items Sold", sales_df["Number of Items"].sum())
     with col_2:
@@ -34,7 +34,11 @@ def render_sales():
         st.metric("Total Revenue", f"${total_revenue:,.2f}")
     with col_3:
         avg_sale_price = sales_df["Revenue"].mean()
-        st.metric("Average Sale Price", f"${avg_sale_price:,.2f}")
+        st.metric("Average Deal Value", f"${avg_sale_price:,.2f}")
+    with col_4:
+        total_profit_df = get_total_profit_df(st.session_state["refresh_token"])
+        total_profit = float(total_profit_df["total_profit"].iloc[0] or 0)
+        st.metric("Total Item Profit", f"${total_profit:,.2f}")
     
     # Get sales data with sale_id for selection, including cost basis from sale_items
     df = run_query_df(

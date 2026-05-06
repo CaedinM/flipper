@@ -1,9 +1,12 @@
 CREATE TABLE items (
     item_id SERIAL PRIMARY KEY,
-    description TEXT NOT NULL UNIQUE,
     category TEXT NOT NULL,
+    era TEXT CHECK (era IN ('Scarlet & Violet', 'Mega Evolution')),
+    set TEXT,
+    product TEXT,
     retail_value NUMERIC(12,2),
-    avg_cost_basis NUMERIC(12,2)
+    avg_cost_basis NUMERIC(12,2),
+    UNIQUE (era, set, product)
 );
 
 CREATE TABLE orders (

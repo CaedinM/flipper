@@ -88,6 +88,61 @@ def get_monthly_profit_chart(refresh_token: int):
     return _theme(chart)
 
 
+def get_cost_basis_vs_profit_chart(refresh_token: int):
+    df = get_cost_basis_vs_profit_df(refresh_token)
+    if df.empty:
+        return None
+
+    df["avg_cost_basis"]      = pd.to_numeric(df["avg_cost_basis"],      errors="coerce")
+    df["avg_profit_per_unit"] = pd.to_numeric(df["avg_profit_per_unit"], errors="coerce")
+    df["units_sold"]          = pd.to_numeric(df["units_sold"],          errors="coerce")
+
+    zero_line = (
+        alt.Chart(pd.DataFrame({"y": [0]}))
+        .mark_rule(strokeDash=[4, 4], color=_LABEL, opacity=0.5)
+        .encode(y="y:Q")
+    )
+
+    points = (
+        alt.Chart(df)
+        .mark_point(filled=True, size=120, opacity=0.85)
+        .encode(
+            x=alt.X(
+                "avg_cost_basis:Q",
+                title="Avg Cost Basis ($)",
+                axis=alt.Axis(format="$.0f"),
+            ),
+            y=alt.Y(
+                "avg_profit_per_unit:Q",
+                title="Avg Profit / Unit ($)",
+                axis=alt.Axis(format="$.0f"),
+            ),
+            color=alt.Color(
+                "era:N",
+                scale=alt.Scale(scheme="dark2"),
+                legend=alt.Legend(title="Era"),
+            ),
+            size=alt.Size(
+                "units_sold:Q",
+                scale=alt.Scale(range=[60, 400]),
+                legend=alt.Legend(title="Units Sold"),
+            ),
+            tooltip=[
+                alt.Tooltip("item_label:N",          title="Item"),
+                alt.Tooltip("era:N",                 title="Era"),
+                alt.Tooltip("avg_cost_basis:Q",      title="Avg Cost Basis",  format="$.2f"),
+                alt.Tooltip("avg_profit_per_unit:Q", title="Avg Profit/Unit", format="$.2f"),
+                alt.Tooltip("units_sold:Q",          title="Units Sold"),
+            ],
+        )
+    )
+
+    chart = (zero_line + points).properties(
+        width="container", height=400, title="POKEMON: COST BASIS VS. PROFIT PER UNIT"
+    )
+    return _theme(chart)
+
+
 def get_monthly_items_sold_chart(refresh_token: int):
     df = get_monthly_items_sold_df(refresh_token)
     df["month"] = pd.to_datetime(df["month"], utc=True)

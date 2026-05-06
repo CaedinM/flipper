@@ -52,15 +52,17 @@ def render_sale_details(sale_id: int, refresh_token: int):
     # Get sale items with item details and cost basis
     sale_items_df = run_query_df(
         """
-        SELECT 
+        SELECT
             si.quantity,
             si.unit_cost_basis_at_sale,
-            i.description AS "Item Description",
+            i.era AS "Era",
+            i.set AS "Set",
+            i.product AS "Product",
             i.category AS "Category"
         FROM sale_items si
         JOIN items i ON si.item_id = i.item_id
         WHERE si.sale_id = %s
-        ORDER BY i.description
+        ORDER BY i.set, i.product
         """,
         refresh_token,
         (sale_id,)
@@ -89,15 +91,17 @@ def render_sale_details(sale_id: int, refresh_token: int):
         
         # Prepare display dataframe
         display_df = sale_items_df.copy()
+        display_df["Description"] = display_df["Set"].fillna("") + " – " + display_df["Product"].fillna("")
         display_df["Unit Cost"] = display_df["unit_cost_basis_at_sale"]
-        display_df = display_df[["Item Description", "Category", "quantity", "Unit Cost", "Total Cost"]]
-        
+        display_df = display_df[["Description", "Era", "Category", "quantity", "Unit Cost", "Total Cost"]]
+
         st.dataframe(
             display_df,
             width="stretch",
             hide_index=True,
             column_config={
-                "Item Description": st.column_config.TextColumn("Item Description"),
+                "Description": st.column_config.TextColumn("Description"),
+                "Era": st.column_config.TextColumn("Era"),
                 "Category": st.column_config.TextColumn("Category"),
                 "quantity": st.column_config.NumberColumn("Quantity", format="%d"),
                 "Unit Cost": st.column_config.NumberColumn("Unit Cost", format="$%.2f"),

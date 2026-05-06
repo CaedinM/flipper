@@ -114,17 +114,16 @@ def render_overview():
     items_sold = int(row.get("items_sold", 0) or 0)
     item_profit = float(row.get("item_profit", 0) or 0)
 
-    col_left, col_empty = st.columns(2)
-    
-    with col_left:
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.metric("Items Sold", f"{items_sold}")
-        with col_b:
-            st.metric("Item Profit", f"${item_profit:,.2f}")
+    items_purchased_df = get_current_month_items_purchased_df(st.session_state["refresh_token"])
+    items_purchased = int(items_purchased_df["items_purchased"].iloc[0] or 0)
 
-    with col_empty:
-        pass
+    col_a, col_b, col_c, col_empty = st.columns(4)
+    with col_a:
+        st.metric("Items Purchased", f"{items_purchased}")
+    with col_b:
+        st.metric("Items Sold", f"{items_sold}")
+    with col_c:
+        st.metric("Item Profit", f"${item_profit:,.2f}")
 
 
     # Monthly Charts
@@ -181,6 +180,8 @@ def render_overview():
         st.subheader("Recent Purchases")
         order_items_df = get_order_items_df(st.session_state["refresh_token"])
         order_items_df = order_items_df.sort_values(by="Date", ascending=False)
+        order_items_df.insert(1, "Description", order_items_df["Set"].fillna("") + " – " + order_items_df["Product"].fillna(""))
+        order_items_df = order_items_df.drop(columns=["Set", "Product"])
         st.dataframe(order_items_df,
         width="stretch",
         hide_index=True,
